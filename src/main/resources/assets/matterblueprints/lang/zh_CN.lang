@@ -25,6 +25,7 @@ matterblueprints.host.info.power=中央能源仓实际供电；远端能源仓�
 matterblueprints.host.info.aggregate_running=聚合运行：%s 台机器，并行 %s，进度 %s秒 / %s秒（%s%%，%s EU/t）
 matterblueprints.host.info.aggregate_idle=聚合等待：已连接 %s 台机器
 matterblueprints.host.gui.recipe=进度：%s秒 / %s秒（%s%%）\n聚合产能：%s 台机器，实际并行 %s\n中央功率：%s EU/t
+matterblueprints.host.gui.progress=§fProgress: %s秒 / %s秒（%s%%）
 matterblueprints.host.tooltip.type=多方块机器托管中心
 matterblueprints.host.tooltip.summary=使用中央输入、输出仓统一运行已连接的同类型多方块机器
 matterblueprints.host.tooltip.remote_physical=远端机器必须保持完整成型并保留能源仓；远端能源仓只决定电压、安培与超频

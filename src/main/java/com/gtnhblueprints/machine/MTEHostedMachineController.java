@@ -229,6 +229,25 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             coordinator.getActiveEnergyUsage());
     }
 
+    /**
+     * GT's black machine-status panel obtains its progress line from this method rather than from
+     * {@link #generateCurrentRecipeInfoString()}. The host mirrors its aggregate job into the normal progress fields,
+     * so keeping this override explicit also avoids version-specific differences in the GT base implementation.
+     */
+    @Override
+    protected String generateCurrentProgress() {
+        // The GUI calls this on the client. The coordinator is server-only, while these standard GT fields are synced.
+        int maximum = mMaxProgresstime;
+        if (maximum <= 0) return "";
+        int progress = mProgresstime;
+        double percent = Math.min(100.0D, progress * 100.0D / maximum);
+        return StatCollector.translateToLocalFormatted(
+            "matterblueprints.host.gui.progress",
+            formatSeconds(progress),
+            formatSeconds(maximum),
+            String.format(Locale.ROOT, "%.1f", percent));
+    }
+
     public MTEHatchDroneDownLink getDroneDownLink() {
         for (MTEHatchMaintenance hatch : mMaintenanceHatches) {
             if (hatch instanceof MTEHatchDroneDownLink) return (MTEHatchDroneDownLink) hatch;

@@ -3,6 +3,7 @@ package com.gtnhblueprints.machine;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -37,10 +38,21 @@ import gregtech.common.tileentities.machines.multi.drone.MTEHatchDroneDownLink;
 
 final class HostedMachineCoordinator {
 
+    private static final int CENTRAL_POWER_CACHE_TICKS = 20;
+    private static final int MAINTENANCE_REFRESH_TICKS = 20;
+    private static final ClassValue<RemoteHooks> REMOTE_HOOKS = new ClassValue<RemoteHooks>() {
+
+        @Override
+        protected RemoteHooks computeValue(Class<?> type) {
+            return new RemoteHooks(type);
+        }
+    };
+
     private final MTEHostedMachineController owner;
     private final Map<MTEMultiBlockBase, HostedJob> hosted = new IdentityHashMap<MTEMultiBlockBase, HostedJob>();
     private final Set<String> persistedClaims = new HashSet<String>();
     private final Map<String, HostedJob> pendingJobs = new HashMap<String, HostedJob>();
+    private final List<MTEHatch> centralEnergyHatches = new ArrayList<MTEHatch>();
     private MTEMultiBlockBase activeRemote;
     private String statusKey = "matterblueprints.host.status.no_match";
     private long energySpentThisTick;
@@ -64,7 +76,8 @@ final class HostedMachineCoordinator {
             return;
         }
 
-        List<MTEMultiBlockBase> discovered = new ArrayList<MTEMultiBlockBase>();
+        Set<MTEMultiBlockBase> discovered = Collections
+            .newSetFromMap(new IdentityHashMap<MTEMultiBlockBase, Boolean>());
         for (DroneConnection connection : downLink.getCentre().getConnectionList()) {
             if (connection == null || !connection.isValid()) continue;
             MTEMultiBlockBase remote = connection.getLinkedMachine();
@@ -85,7 +98,7 @@ final class HostedMachineCoordinator {
 
     void tick(long worldTick, boolean allowNewRecipe) {
         energySpentThisTick = 0;
-        centralPowerCapacity = ExoticEnergyInputHelper.getTotalEuMulti(owner.getExoticAndNormalEnergyHatchList());
+        if (centralEnergyHatches.isEmpty() || worldTick % CENTRAL_POWER_CACHE_TICKS == 0) refreshCentralPower();
         if (activeRemote != null) {
             HostedJob job = hosted.get(activeRemote);
             if (job == null || !job.isActive() || !isUsable(activeRemote)) {
@@ -93,7 +106,7 @@ final class HostedMachineCoordinator {
                 activeRemote = null;
                 setRemoteActivity(false);
             } else {
-                advanceRecipe(activeRemote, job);
+                advanceRecipe(activeRemote, job, worldTick);
             }
         }
         if (allowNewRecipe && activeRemote == null && !hosted.isEmpty()
@@ -109,6 +122,8 @@ final class HostedMachineCoordinator {
         persistedClaims.clear();
         pendingJobs.clear();
         activeRemote = null;
+        centralEnergyHatches.clear();
+        centralPowerCapacity = 0;
     }
 
     void releaseRemote(MTEMultiBlockBase target) {
@@ -352,13 +367,15 @@ final class HostedMachineCoordinator {
         }
     }
 
-    private void advanceRecipe(MTEMultiBlockBase remote, HostedJob job) {
+    private void advanceRecipe(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
         job.exposeProgressToRemote(remote);
         boolean continued = false;
         try {
             // Vanilla GT synchronizes the six maintenance flags from the hatch before runMachine().
             // Hosted machines do not execute their own runMachine(), so this must happen here as well.
-            remote.checkMaintenance();
+            // The disabled remote still performs its own base maintenance synchronization. Refreshing here once per
+            // second covers forks that skip it without repeating six hatch reads for every aggregate tick.
+            if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
             if (!remote.doRandomMaintenanceDamage()) return;
             long energyUsage = getActualEnergyUsage(remote);
             if (!drainCentralEnergy(energyUsage)) {
@@ -441,75 +458,37 @@ final class HostedMachineCoordinator {
     }
 
     private void invokeOutputAfterRecipe(MTEMultiBlockBase remote) {
-        invokeLifecycleMethod(remote, "outputAfterRecipe");
+        REMOTE_HOOKS.get(remote.getClass()).invokeOutputAfterRecipe(remote);
     }
 
     private void invokeIncrementProgressTime(MTEMultiBlockBase remote) {
-        if (!invokeLifecycleMethod(remote, "incrementProgressTime")) {
-            // Every supported GT base has this method. Keep a safe fallback for an unexpected fork.
-            remote.mProgresstime++;
-        }
-    }
-
-    private boolean invokeLifecycleMethod(MTEMultiBlockBase remote, String methodName) {
-        Class<?> type = remote.getClass();
-        while (type != null && MTEMultiBlockBase.class.isAssignableFrom(type)) {
-            try {
-                Method method = type.getDeclaredMethod(methodName);
-                method.setAccessible(true);
-                method.invoke(remote);
-                return true;
-            } catch (NoSuchMethodException ignored) {
-                type = type.getSuperclass();
-            } catch (ReflectiveOperationException error) {
-                MatterBlueprints.LOG.warn("Could not run {} for {}", methodName, remote.mName, error);
-                return false;
-            }
-        }
-        return false;
+        REMOTE_HOOKS.get(remote.getClass()).incrementProgress(remote);
     }
 
     private boolean hasCustomRunningTick(MTEMultiBlockBase remote) {
-        Class<?> type = remote.getClass();
-        while (type != null && type != MTEMultiBlockBase.class && MTEMultiBlockBase.class.isAssignableFrom(type)) {
-            try {
-                type.getDeclaredMethod("onRunningTick", ItemStack.class);
-                return true;
-            } catch (NoSuchMethodException ignored) {
-                type = type.getSuperclass();
-            }
-        }
-        return false;
+        return REMOTE_HOOKS.get(remote.getClass()).hasCustomRunningTick;
     }
 
     private long getActualEnergyUsage(MTEMultiBlockBase remote) {
-        Class<?> type = remote.getClass();
-        while (type != null && MTEMultiBlockBase.class.isAssignableFrom(type)) {
-            try {
-                Method method = type.getDeclaredMethod("getActualEnergyUsage");
-                method.setAccessible(true);
-                return Math.max(0L, ((Number) method.invoke(remote)).longValue());
-            } catch (NoSuchMethodException ignored) {
-                type = type.getSuperclass();
-            } catch (ReflectiveOperationException error) {
-                MatterBlueprints.LOG.warn("Could not read actual energy usage for {}", remote.mName, error);
-                return remote.mEUt < 0 ? -(long) remote.mEUt : 0L;
-            }
-        }
-        return remote.mEUt < 0 ? -(long) remote.mEUt : 0L;
+        return REMOTE_HOOKS.get(remote.getClass()).getActualEnergyUsage(remote);
+    }
+
+    private void refreshCentralPower() {
+        centralEnergyHatches.clear();
+        centralEnergyHatches.addAll(owner.getExoticAndNormalEnergyHatchList());
+        centralPowerCapacity = ExoticEnergyInputHelper.getTotalEuMulti(centralEnergyHatches);
     }
 
     private boolean drainCentralEnergy(long amount) {
         if (amount <= 0) return true;
         long projectedUsage = saturatingAdd(energySpentThisTick, amount);
         if (projectedUsage > centralPowerCapacity) return false;
-        List<MTEHatch> hatches = owner.getExoticAndNormalEnergyHatchList();
         long stored = 0;
-        for (MTEHatch hatch : hatches) {
+        for (MTEHatch hatch : centralEnergyHatches) {
             if (hatch == null || hatch.getBaseMetaTileEntity() == null) continue;
             stored = saturatingAdd(stored, hatch.getBaseMetaTileEntity().getStoredEU());
         }
-        if (stored < amount || !ExoticEnergyInputHelper.drainEnergy(amount, hatches)) return false;
+        if (stored < amount || !ExoticEnergyInputHelper.drainEnergy(amount, centralEnergyHatches)) return false;
         energySpentThisTick = projectedUsage;
         return true;
     }
@@ -532,6 +511,90 @@ final class HostedMachineCoordinator {
         } catch (ReflectiveOperationException error) {
             MatterBlueprints.LOG.warn("Could not read parallel count for {}; using one completed recipe", remote.mName, error);
             return 1;
+        }
+    }
+
+    /** Resolves version- and machine-specific lifecycle hooks once per remote controller class. */
+    private static final class RemoteHooks {
+
+        private final Method actualEnergyUsage;
+        private final Method incrementProgressTime;
+        private final Method outputAfterRecipe;
+        private final boolean hasCustomRunningTick;
+
+        RemoteHooks(Class<?> type) {
+            actualEnergyUsage = findLifecycleMethod(type, "getActualEnergyUsage");
+            incrementProgressTime = findLifecycleMethod(type, "incrementProgressTime");
+            outputAfterRecipe = findLifecycleMethod(type, "outputAfterRecipe");
+            hasCustomRunningTick = declaresBeforeBase(type, "onRunningTick", ItemStack.class);
+        }
+
+        long getActualEnergyUsage(MTEMultiBlockBase remote) {
+            if (actualEnergyUsage == null) return fallbackEnergyUsage(remote);
+            if (actualEnergyUsage.getDeclaringClass() == MTEMultiBlockBase.class) {
+                return Math.max(0L, -(long) remote.mEUt * 10000L / Math.max(1000, remote.mEfficiency));
+            }
+            try {
+                return Math.max(0L, ((Number) actualEnergyUsage.invoke(remote)).longValue());
+            } catch (ReflectiveOperationException error) {
+                MatterBlueprints.LOG.warn("Could not read actual energy usage for {}", remote.mName, error);
+                return fallbackEnergyUsage(remote);
+            }
+        }
+
+        void incrementProgress(MTEMultiBlockBase remote) {
+            if (incrementProgressTime == null
+                || incrementProgressTime.getDeclaringClass() == MTEMultiBlockBase.class) {
+                remote.mProgresstime++;
+                return;
+            }
+            try {
+                incrementProgressTime.invoke(remote);
+            } catch (ReflectiveOperationException error) {
+                MatterBlueprints.LOG.warn("Could not increment progress for {}", remote.mName, error);
+                remote.mProgresstime++;
+            }
+        }
+
+        void invokeOutputAfterRecipe(MTEMultiBlockBase remote) {
+            if (outputAfterRecipe == null) return;
+            try {
+                outputAfterRecipe.invoke(remote);
+            } catch (ReflectiveOperationException error) {
+                MatterBlueprints.LOG.warn("Could not run outputAfterRecipe for {}", remote.mName, error);
+            }
+        }
+
+        private static long fallbackEnergyUsage(MTEMultiBlockBase remote) {
+            return remote.mEUt < 0 ? -(long) remote.mEUt : 0L;
+        }
+
+        private static Method findLifecycleMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+            Class<?> current = type;
+            while (current != null && MTEMultiBlockBase.class.isAssignableFrom(current)) {
+                try {
+                    Method method = current.getDeclaredMethod(name, parameterTypes);
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private static boolean declaresBeforeBase(Class<?> type, String name, Class<?>... parameterTypes) {
+            Class<?> current = type;
+            while (current != null && current != MTEMultiBlockBase.class
+                && MTEMultiBlockBase.class.isAssignableFrom(current)) {
+                try {
+                    current.getDeclaredMethod(name, parameterTypes);
+                    return true;
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return false;
         }
     }
 

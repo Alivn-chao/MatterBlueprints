@@ -25,6 +25,7 @@ matterblueprints.host.info.power=The host supplies energy; remote hatches only d
 matterblueprints.host.info.aggregate_running=Aggregate run: %s machines, %s parallels, progress %ss / %ss (%s%%, %s EU/t)
 matterblueprints.host.info.aggregate_idle=Aggregate idle: %s machines connected
 matterblueprints.host.gui.recipe=Progress: %ss / %ss (%s%%)\nAggregate capacity: %s machines, %s actual parallels\nCentral power: %s EU/t
+matterblueprints.host.gui.progress=§fProgress: %ss / %ss (%s%%)
 matterblueprints.host.tooltip.type=Remote Multiblock Host
 matterblueprints.host.tooltip.summary=Runs connected machines of one type using centralized inputs and outputs
 matterblueprints.host.tooltip.remote_physical=Remote machines remain formed and keep energy hatches only to define voltage, amperage and overclocking
