@@ -5,7 +5,9 @@ import static com.gtnewhorizon.structurelib.structure.StructureUtility.transpose
 import static gregtech.api.enums.HatchElement.InputBus;
 import static gregtech.api.enums.HatchElement.InputHatch;
 import static gregtech.api.enums.HatchElement.Maintenance;
+import static gregtech.api.enums.HatchElement.Dynamo;
 import static gregtech.api.enums.HatchElement.Energy;
+import static gregtech.api.enums.HatchElement.ExoticDynamo;
 import static gregtech.api.enums.HatchElement.ExoticEnergy;
 import static gregtech.api.enums.HatchElement.OutputBus;
 import static gregtech.api.enums.HatchElement.OutputHatch;
@@ -95,7 +97,15 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                 .addElement(
                     'C',
                     buildHatchAdder(MTEHostedMachineController.class)
-                        .atLeast(InputHatch, OutputHatch, InputBus, OutputBus, Maintenance, Energy.or(ExoticEnergy))
+                        .atLeast(
+                            InputHatch,
+                            OutputHatch,
+                            InputBus,
+                            OutputBus,
+                            Maintenance,
+                            Energy.or(ExoticEnergy)
+                                .or(Dynamo)
+                                .or(ExoticDynamo))
                         .casingIndex(Casings.ZPMMachineCasing.textureId)
                         .hint(1)
                         .buildAndChain(onElementPass(machine -> ++machine.casingCount, Casings.ZPMMachineCasing.asElement())))
@@ -112,7 +122,6 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         checkHasAnyInput(errors);
         checkHasAnyOutput(errors);
         checkOneMaintenanceHatch(errors);
-        checkExoticAndNormalEnergyHatches(errors);
     }
 
     @Override
@@ -241,7 +250,8 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         double maximumSeconds = maximum / 20.0D;
         double percent = Math.min(100.0D, progress * 100.0D / maximum);
         return StatCollector.translateToLocalFormatted(
-            "matterblueprints.host.gui.recipe",
+            coordinator.isGeneratorMode() ? "matterblueprints.host.gui.generator_recipe"
+                : "matterblueprints.host.gui.recipe",
             String.format(Locale.ROOT, "%.2f", progressSeconds),
             String.format(Locale.ROOT, "%.2f", maximumSeconds),
             String.format(Locale.ROOT, "%.1f", percent),
@@ -309,12 +319,14 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             "matterblueprints.host.info.progress",
             coordinator.getAggregateProgressPercent());
         result[parent.length + 3] = StatCollector.translateToLocalFormatted(
-            "matterblueprints.host.info.central_power",
+            coordinator.isGeneratorMode() ? "matterblueprints.host.info.central_generation"
+                : "matterblueprints.host.info.central_power",
             coordinator.getEnergySpentThisTick(),
             coordinator.getCentralPowerCapacity());
         result[parent.length + 4] = StatCollector.translateToLocal("matterblueprints.host.info.status") + " "
             + StatCollector.translateToLocalFormatted(coordinator.getStatusKey(), coordinator.getHostedCount());
-        result[parent.length + 5] = StatCollector.translateToLocal("matterblueprints.host.info.power");
+        result[parent.length + 5] = StatCollector.translateToLocal(
+            coordinator.isGeneratorMode() ? "matterblueprints.host.info.generation" : "matterblueprints.host.info.power");
         for (int i = 0; i < machineLines.size(); i++) result[parent.length + 6 + i] = machineLines.get(i);
         return result;
     }
@@ -337,6 +349,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         tag.setInteger("mbHostMaxProgressTicks", coordinator.getActiveMaxProgress());
         tag.setLong("mbHostPowerUsed", coordinator.getEnergySpentThisTick());
         tag.setLong("mbHostPowerCapacity", coordinator.getCentralPowerCapacity());
+        tag.setBoolean("mbHostGeneratorMode", coordinator.isGeneratorMode());
         tag.setString("mbHostStatus", coordinator.getStatusKey());
         ItemStack selector = getControllerSlot();
         tag.setString("mbHostSelector", selector == null ? "" : selector.getDisplayName());
@@ -375,7 +388,8 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         }
         tooltip.add(
             EnumChatFormatting.GOLD + StatCollector.translateToLocalFormatted(
-                "matterblueprints.host.waila.power",
+                tag.getBoolean("mbHostGeneratorMode") ? "matterblueprints.host.waila.generation"
+                    : "matterblueprints.host.waila.power",
                 tag.getLong("mbHostPowerUsed"),
                 tag.getLong("mbHostPowerCapacity")));
         tooltip.add(
@@ -405,6 +419,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.selector"))
             .addInfo(tr("matterblueprints.host.tooltip.mechanics"))
             .addInfo(tr("matterblueprints.host.tooltip.batch"))
+            .addInfo(tr("matterblueprints.host.tooltip.generator"))
             .addSeparator()
             .addInfo(tr("matterblueprints.host.tooltip.link_title"))
             .addInfo(tr("matterblueprints.host.tooltip.link_1"))
@@ -419,6 +434,10 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                 tr("matterblueprints.host.tooltip.any_casing"),
                 1)
             .addEnergyHatch(tr("matterblueprints.host.tooltip.energy"), tr("matterblueprints.host.tooltip.any_casing"), 1)
+            .addDynamoHatch(
+                tr("matterblueprints.host.tooltip.dynamo"),
+                tr("matterblueprints.host.tooltip.any_casing"),
+                1)
             .addTecTechHatchInfo()
             .addInputAny("1+", tr("matterblueprints.host.tooltip.any_casing"), 1)
             .addOutputAny("1+", tr("matterblueprints.host.tooltip.any_casing"), 1)

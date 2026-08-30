@@ -18,6 +18,8 @@ class HostedJobPersistenceTest {
         saved.setInteger("machineCount", 12);
         saved.setInteger("parallels", 768);
         saved.setLong("energyUsage", 3145728L);
+        saved.setLong("nextRecipeCheckTick", 9001L);
+        saved.setInteger("idleRecipeCheckDelay", 80);
 
         HostedMachineCoordinator.HostedJob restored =
             HostedMachineCoordinator.HostedJob.readFromNBT(saved);
@@ -30,6 +32,8 @@ class HostedJobPersistenceTest {
         assertEquals(12, roundTrip.getInteger("machineCount"));
         assertEquals(768, roundTrip.getInteger("parallels"));
         assertEquals(3145728L, roundTrip.getLong("energyUsage"));
+        assertEquals(9001L, roundTrip.getLong("nextRecipeCheckTick"));
+        assertEquals(80, roundTrip.getInteger("idleRecipeCheckDelay"));
     }
 
     @Test

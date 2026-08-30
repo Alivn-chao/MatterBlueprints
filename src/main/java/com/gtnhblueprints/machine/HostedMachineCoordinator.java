@@ -61,13 +61,16 @@ final class HostedMachineCoordinator {
     private final Set<String> persistedClaims = new HashSet<String>();
     private final Map<String, HostedJob> pendingJobs = new HashMap<String, HostedJob>();
     private final List<MTEHatch> centralEnergyHatches = new ArrayList<MTEHatch>();
+    private final List<MTEHatch> centralDynamoHatches = new ArrayList<MTEHatch>();
     private MTEMultiBlockBase activeRemote;
     private RemoteRunningContext runningContext;
     private String statusKey = "matterblueprints.host.status.no_match";
     private long energySpentThisTick;
+    private long energyGeneratedThisTick;
     private long centralPowerCapacity;
     private long nextRecipeCheckTick;
     private int idleRecipeCheckDelay;
+    private boolean generatorMode;
 
     HostedMachineCoordinator(MTEHostedMachineController owner) {
         this.owner = owner;
@@ -90,12 +93,15 @@ final class HostedMachineCoordinator {
 
         Set<MTEMultiBlockBase> discovered = Collections
             .newSetFromMap(new IdentityHashMap<MTEMultiBlockBase, Boolean>());
+        boolean discoveredGenerator = false;
         for (String machine : boundMachines) {
             MTEMultiBlockBase remote = resolveMachine(machine);
             if (!isEligible(remote, selector)) continue;
             discovered.add(remote);
+            discoveredGenerator |= isSupportedGenerator(remote);
             acquire(remote);
         }
+        generatorMode = discoveredGenerator;
 
         Iterator<MTEMultiBlockBase> iterator = hosted.keySet().iterator();
         while (iterator.hasNext()) {
@@ -109,7 +115,15 @@ final class HostedMachineCoordinator {
 
     void tick(long worldTick, boolean allowNewRecipe) {
         energySpentThisTick = 0;
-        if (centralEnergyHatches.isEmpty() || worldTick % CENTRAL_POWER_CACHE_TICKS == 0) refreshCentralPower();
+        energyGeneratedThisTick = 0;
+        if ((isGeneratorMode() ? centralDynamoHatches.isEmpty() : centralEnergyHatches.isEmpty())
+            || worldTick % CENTRAL_POWER_CACHE_TICKS == 0) {
+            refreshCentralPower();
+        }
+        if (isGeneratorMode()) {
+            tickGenerators(worldTick, allowNewRecipe);
+            return;
+        }
         if (activeRemote != null) {
             HostedJob job = hosted.get(activeRemote);
             if (job == null || !job.isActive() || !isUsable(activeRemote)) {
@@ -136,7 +150,9 @@ final class HostedMachineCoordinator {
         activeRemote = null;
         runningContext = null;
         centralEnergyHatches.clear();
+        centralDynamoHatches.clear();
         centralPowerCapacity = 0;
+        generatorMode = false;
     }
 
     void releaseRemote(MTEMultiBlockBase target) {
@@ -214,6 +230,11 @@ final class HostedMachineCoordinator {
     }
 
     int getRunningCount() {
+        if (isGeneratorMode()) {
+            int count = 0;
+            for (HostedJob job : hosted.values()) if (job.isActive()) count++;
+            return count;
+        }
         return activeRemote != null && hosted.containsKey(activeRemote) && hosted.get(activeRemote).isActive() ? 1 : 0;
     }
 
@@ -224,7 +245,7 @@ final class HostedMachineCoordinator {
     }
 
     long getEnergySpentThisTick() {
-        return energySpentThisTick;
+        return isGeneratorMode() ? energyGeneratedThisTick : energySpentThisTick;
     }
 
     long getCentralPowerCapacity() {
@@ -233,6 +254,23 @@ final class HostedMachineCoordinator {
 
     List<String> getMachineStatusLines(int maximumLines) {
         List<String> result = new ArrayList<String>();
+        if (isGeneratorMode()) {
+            int running = getRunningCount();
+            if (running > 0) {
+                result.add(
+                    net.minecraft.util.StatCollector.translateToLocalFormatted(
+                        "matterblueprints.host.info.aggregate_generating",
+                        running,
+                        energyGeneratedThisTick,
+                        centralPowerCapacity));
+            } else if (!hosted.isEmpty()) {
+                result.add(
+                    net.minecraft.util.StatCollector.translateToLocalFormatted(
+                        "matterblueprints.host.info.aggregate_generator_idle",
+                        hosted.size()));
+            }
+            return result;
+        }
         HostedJob job = getActiveJob();
         if (job != null) {
             int percent = job.maxProgress <= 0 ? 0 : Math.min(100, job.progress * 100 / job.maxProgress);
@@ -265,17 +303,24 @@ final class HostedMachineCoordinator {
     }
 
     int getActiveParallels() {
+        if (isGeneratorMode()) return getRunningCount();
         HostedJob job = getActiveJob();
         return job == null ? 0 : job.parallels;
     }
 
     long getActiveEnergyUsage() {
+        if (isGeneratorMode()) return energyGeneratedThisTick;
         HostedJob job = getActiveJob();
         return job == null ? 0 : job.energyUsage;
     }
 
+    boolean isGeneratorMode() {
+        return generatorMode;
+    }
+
     int getActiveEfficiency() {
-        return activeRemote == null ? 0 : activeRemote.mEfficiency;
+        MTEMultiBlockBase remote = getDisplayRemote();
+        return remote == null ? 0 : remote.mEfficiency;
     }
 
     ItemStack[] getActiveOutputItems() {
@@ -297,9 +342,24 @@ final class HostedMachineCoordinator {
     }
 
     private HostedJob getActiveJob() {
-        if (activeRemote == null) return null;
-        HostedJob job = hosted.get(activeRemote);
-        return job != null && job.isActive() ? job : null;
+        if (activeRemote != null) {
+            HostedJob job = hosted.get(activeRemote);
+            if (job != null && job.isActive()) return job;
+        }
+        if (isGeneratorMode()) {
+            for (HostedJob job : hosted.values()) if (job.isActive()) return job;
+        }
+        return null;
+    }
+
+    private MTEMultiBlockBase getDisplayRemote() {
+        if (activeRemote != null) return activeRemote;
+        if (isGeneratorMode()) {
+            for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
+                if (entry.getValue().isActive()) return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private boolean isUsable(MTEMultiBlockBase remote) {
@@ -343,6 +403,7 @@ final class HostedMachineCoordinator {
         if (remote == null || remote == owner || !remote.isValid() || !remote.mMachine) return false;
         ItemStack remoteController = remote.getStackForm(1);
         if (remoteController == null || !selector.isItemEqual(remoteController)) return false;
+        if (isSupportedGenerator(remote)) return getDynamoCapacity(remote) > 0;
         List<MTEHatch> energyHatches = remote.getExoticAndNormalEnergyHatchList();
         return !energyHatches.isEmpty() && ExoticEnergyInputHelper.getTotalEuMulti(energyHatches) > 0;
     }
@@ -373,9 +434,11 @@ final class HostedMachineCoordinator {
         String key = machineKey(remote);
         if (!HostedMachineRegistry.claim(remote, owner)) return;
         HostedJob restoredJob = pendingJobs.remove(key);
-        if (restoredJob != null && restoredJob.isActive() && activeRemote != null) restoredJob = null;
+        if (restoredJob != null && restoredJob.isActive() && activeRemote != null && !isSupportedGenerator(remote)) {
+            restoredJob = null;
+        }
         hosted.put(remote, restoredJob == null ? new HostedJob() : restoredJob);
-        if (restoredJob != null && restoredJob.isActive()) activeRemote = remote;
+        if (restoredJob != null && restoredJob.isActive() && !isSupportedGenerator(remote)) activeRemote = remote;
         persistedClaims.add(key);
         tile.disableWorking();
         tile.setActive(false);
@@ -438,6 +501,138 @@ final class HostedMachineCoordinator {
             }
         }
         return false;
+    }
+
+    /**
+     * Generator controllers retain one job per physical machine because rotor wear, warm-up, coolant and fuel state
+     * belong to that controller. The host only aggregates their per-tick output and display state, avoiding a second
+     * full multiblock tick for every remote machine.
+     */
+    private void tickGenerators(long worldTick, boolean allowNewRecipe) {
+        if (centralDynamoHatches.isEmpty() || centralPowerCapacity <= 0) {
+            statusKey = "matterblueprints.host.status.no_central_dynamo";
+            return;
+        }
+        statusKey = "matterblueprints.host.status.hosting_generators";
+
+        for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
+            MTEMultiBlockBase remote = entry.getKey();
+            HostedJob job = entry.getValue();
+            if (!job.isActive()) continue;
+            if (!isUsable(remote)) {
+                job.restoreToRemote(remote);
+                continue;
+            }
+            advanceGenerator(remote, job, worldTick);
+        }
+
+        if (allowNewRecipe) {
+            for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
+                HostedJob job = entry.getValue();
+                if (job.isActive() || worldTick < job.nextRecipeCheckTick) continue;
+                boolean started = startGeneratorRecipe(entry.getKey(), job);
+                job.scheduleNextRecipeCheck(worldTick, started);
+            }
+        }
+    }
+
+    private boolean startGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job) {
+        if (!isUsable(remote) || !isSupportedGenerator(remote)) return false;
+        HatchSnapshot snapshot = new HatchSnapshot(remote);
+        snapshot.useOwnerIO(owner, remote);
+        boolean successful = false;
+        try {
+            remote.startRecipeProcessing();
+            CheckRecipeResult result = remote.checkProcessing();
+            remote.setCheckRecipeResult(result);
+            successful = result.wasSuccessful();
+        } catch (RuntimeException error) {
+            MatterBlueprints.LOG.error("Hosted generator recipe check failed for {}", remote.mName, error);
+            remote.stopMachine();
+        } finally {
+            try {
+                remote.endRecipeProcessing();
+            } finally {
+                snapshot.restore(remote);
+            }
+        }
+        if (!successful || remote.mMaxProgresstime <= 0) return false;
+        job.captureFromRemote(remote, 1, 1, REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote));
+        return true;
+    }
+
+    private void advanceGenerator(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
+        long expectedOutput = REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote);
+        long reservedCapacity = expectedOutput > 0 ? expectedOutput : getDynamoCapacity(remote);
+        if (reservedCapacity <= 0
+            || saturatingAdd(energyGeneratedThisTick, reservedCapacity) > centralPowerCapacity) {
+            statusKey = "matterblueprints.host.status.dynamo_capacity";
+            return;
+        }
+
+        job.exposeProgressToRemote(remote);
+        boolean continued = false;
+        HatchSnapshot ioSnapshot = new HatchSnapshot(remote);
+        DynamoEnergySnapshot dynamoSnapshot = new DynamoEnergySnapshot(remote);
+        try {
+            if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
+            if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
+
+            ioSnapshot.useOwnerIO(owner, remote);
+            if (!remote.onRunningTick(remote.getControllerSlot())) return;
+            if (remote.mMaxProgresstime <= 0) return;
+
+            long generated = REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote);
+            if (saturatingAdd(energyGeneratedThisTick, generated) > centralPowerCapacity) {
+                statusKey = "matterblueprints.host.status.dynamo_capacity";
+                return;
+            }
+            injectCentralEnergy(generated);
+            energyGeneratedThisTick = saturatingAdd(energyGeneratedThisTick, generated);
+            job.energyUsage = generated;
+
+            if (!remote.polluteEnvironment(remote.getPollutionPerTick(remote.getControllerSlot()))) {
+                remote.stopMachine();
+                return;
+            }
+            invokeIncrementProgressTime(remote);
+            job.progress = remote.mProgresstime;
+            continued = true;
+        } finally {
+            dynamoSnapshot.restore();
+            ioSnapshot.restore(remote);
+            boolean remoteStopped = remote.mMaxProgresstime <= 0;
+            job.hideProgressFromRemote(remote);
+            if (!continued && remoteStopped) job.clear();
+        }
+        if (!job.isActive() || job.progress < job.maxProgress) return;
+        finishGeneratorRecipe(remote, job);
+    }
+
+    private void finishGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job) {
+        recordDroneProduction(remote, job);
+        boolean itemsAccepted = job.outputItems == null || owner.addItemOutputs(job.outputItems);
+        boolean fluidsAccepted = addFluidOutputs(job.outputFluids);
+        HatchSnapshot snapshot = new HatchSnapshot(remote);
+        snapshot.useOwnerIO(owner, remote);
+        job.exposeProgressToRemote(remote);
+        try {
+            invokeOutputAfterRecipe(remote);
+        } finally {
+            job.hideProgressFromRemote(remote);
+            snapshot.restore(remote);
+        }
+        remote.mEfficiency = Math.max(
+            0,
+            Math.min(
+                remote.mEfficiency + remote.mEfficiencyIncrease,
+                remote.getMaxEfficiency(remote.getControllerSlot())
+                    - ((remote.getIdealStatus() - remote.getRepairStatus()) * 1000)));
+        remote.mEfficiencyIncrease = 0;
+        remote.recipesDone++;
+        remote.setLastWorkingTick(remote.getTotalRunTime());
+        job.clear();
+        if (!itemsAccepted || !fluidsAccepted) statusKey = "matterblueprints.host.status.output_full";
     }
 
     private void advanceRecipe(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
@@ -560,8 +755,29 @@ final class HostedMachineCoordinator {
 
     private void refreshCentralPower() {
         centralEnergyHatches.clear();
-        centralEnergyHatches.addAll(owner.getExoticAndNormalEnergyHatchList());
-        centralPowerCapacity = ExoticEnergyInputHelper.getTotalEuMulti(centralEnergyHatches);
+        centralDynamoHatches.clear();
+        if (isGeneratorMode()) {
+            centralDynamoHatches.addAll(owner.mDynamoHatches);
+            centralDynamoHatches.addAll(owner.getExoticDynamoHatches());
+            centralPowerCapacity = getDynamoCapacity(centralDynamoHatches);
+        } else {
+            centralEnergyHatches.addAll(owner.getExoticAndNormalEnergyHatchList());
+            centralPowerCapacity = ExoticEnergyInputHelper.getTotalEuMulti(centralEnergyHatches);
+        }
+    }
+
+    private void injectCentralEnergy(long amount) {
+        long remaining = Math.max(0L, amount);
+        for (MTEHatch hatch : centralDynamoHatches) {
+            if (remaining <= 0) break;
+            if (hatch == null || hatch.getBaseMetaTileEntity() == null) continue;
+            long hatchLimit = saturatingMultiply(hatch.maxEUOutput(), hatch.maxAmperesOut());
+            long assigned = Math.min(remaining, hatchLimit);
+            long stored = hatch.getEUVar();
+            long free = Math.max(0L, hatch.maxEUStore() - stored);
+            hatch.setEUVar(saturatingAdd(stored, Math.min(assigned, free)));
+            remaining -= assigned;
+        }
     }
 
     private boolean drainCentralEnergy(long amount) {
@@ -582,6 +798,34 @@ final class HostedMachineCoordinator {
         if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
         if (right < 0 && left < Long.MIN_VALUE - right) return Long.MIN_VALUE;
         return left + right;
+    }
+
+    private static long saturatingMultiply(long left, long right) {
+        if (left <= 0 || right <= 0) return 0;
+        if (left > Long.MAX_VALUE / right) return Long.MAX_VALUE;
+        return left * right;
+    }
+
+    private static long getDynamoCapacity(MTEMultiBlockBase machine) {
+        List<MTEHatch> hatches = new ArrayList<MTEHatch>(machine.mDynamoHatches.size() + 1);
+        hatches.addAll(machine.mDynamoHatches);
+        hatches.addAll(machine.getExoticDynamoHatches());
+        return getDynamoCapacity(hatches);
+    }
+
+    private static long getDynamoCapacity(List<? extends MTEHatch> hatches) {
+        Set<MTEHatch> seen = Collections.newSetFromMap(new IdentityHashMap<MTEHatch, Boolean>());
+        long capacity = 0;
+        for (MTEHatch hatch : hatches) {
+            if (hatch == null || hatch.getBaseMetaTileEntity() == null || !seen.add(hatch)) continue;
+            capacity = saturatingAdd(capacity, saturatingMultiply(hatch.maxEUOutput(), hatch.maxAmperesOut()));
+        }
+        return capacity;
+    }
+
+    private static boolean isSupportedGenerator(MTEMultiBlockBase remote) {
+        return remote != null && HostedGeneratorSupport.isSupportedClassName(remote.getClass().getName())
+            && getDynamoCapacity(remote) > 0;
     }
 
     private long getCompletedRecipeCount(MTEMultiBlockBase remote) {
@@ -605,12 +849,20 @@ final class HostedMachineCoordinator {
         private final Method actualEnergyUsage;
         private final Method incrementProgressTime;
         private final Method outputAfterRecipe;
+        private final Method powerFlow;
+        private final Field longEnergyOutput;
+        private final Field trueOutput;
+        private final Field chemicalEfficiency;
         private final boolean hasCustomRunningTick;
 
         RemoteHooks(Class<?> type) {
             actualEnergyUsage = findLifecycleMethod(type, "getActualEnergyUsage");
             incrementProgressTime = findLifecycleMethod(type, "incrementProgressTime");
             outputAfterRecipe = findLifecycleMethod(type, "outputAfterRecipe");
+            powerFlow = findLifecycleMethod(type, "getPowerFlow");
+            longEnergyOutput = findOptionalField(type, "lEUt");
+            trueOutput = findOptionalField(type, "trueOutput");
+            chemicalEfficiency = findOptionalField(type, "tEff");
             hasCustomRunningTick = declaresBeforeBase(type, "onRunningTick", ItemStack.class);
         }
 
@@ -650,6 +902,26 @@ final class HostedMachineCoordinator {
             }
         }
 
+        long getGeneratedPower(MTEMultiBlockBase remote) {
+            try {
+                if (trueOutput != null) return Math.max(0L, trueOutput.getLong(remote));
+                if (powerFlow != null && chemicalEfficiency != null) {
+                    long basePower = ((Number) powerFlow.invoke(remote)).longValue();
+                    long efficiency = chemicalEfficiency.getLong(remote);
+                    return Math.max(0L, saturatingMultiply(basePower, efficiency) / 10000L);
+                }
+                if (longEnergyOutput != null) {
+                    long basePower = longEnergyOutput.getLong(remote);
+                    return Math.max(0L, saturatingMultiply(basePower, Math.max(0, remote.mEfficiency)) / 10000L);
+                }
+            } catch (ReflectiveOperationException error) {
+                MatterBlueprints.LOG.warn("Could not read generated power for {}", remote.mName, error);
+            }
+            return remote.mEUt > 0
+                ? Math.max(0L, saturatingMultiply(remote.mEUt, Math.max(0, remote.mEfficiency)) / 10000L)
+                : 0L;
+        }
+
         private static long fallbackEnergyUsage(MTEMultiBlockBase remote) {
             return remote.mEUt < 0 ? -(long) remote.mEUt : 0L;
         }
@@ -662,6 +934,20 @@ final class HostedMachineCoordinator {
                     method.setAccessible(true);
                     return method;
                 } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private static Field findOptionalField(Class<?> type, String name) {
+            Class<?> current = type;
+            while (current != null && MTEMultiBlockBase.class.isAssignableFrom(current)) {
+                try {
+                    Field field = current.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field;
+                } catch (NoSuchFieldException ignored) {
                     current = current.getSuperclass();
                 }
             }
@@ -816,12 +1102,16 @@ final class HostedMachineCoordinator {
     }
 
     private static Field resolveExoticEnergyHatchesField() {
+        return resolveHatchField("mExoticEnergyHatches");
+    }
+
+    private static Field resolveHatchField(String name) {
         try {
-            Field field = MTEMultiBlockBase.class.getDeclaredField("mExoticEnergyHatches");
+            Field field = MTEMultiBlockBase.class.getDeclaredField(name);
             field.setAccessible(true);
             return field;
         } catch (ReflectiveOperationException error) {
-            MatterBlueprints.LOG.error("Could not resolve exotic energy hatch field", error);
+            MatterBlueprints.LOG.error("Could not resolve multiblock hatch field {}", name, error);
             return null;
         }
     }
@@ -914,6 +1204,26 @@ final class HostedMachineCoordinator {
         }
     }
 
+    /** Lets the original running hook validate its own dynamos without leaving generated EU in the remote machine. */
+    private static final class DynamoEnergySnapshot {
+
+        private final MTEHatch[] dynamos;
+        private final long[] storedEnergy;
+
+        DynamoEnergySnapshot(MTEMultiBlockBase remote) {
+            Set<MTEHatch> unique = Collections.newSetFromMap(new IdentityHashMap<MTEHatch, Boolean>());
+            for (MTEHatch hatch : remote.mDynamoHatches) if (hatch != null) unique.add(hatch);
+            for (MTEHatch hatch : remote.getExoticDynamoHatches()) if (hatch != null) unique.add(hatch);
+            dynamos = unique.toArray(new MTEHatch[unique.size()]);
+            storedEnergy = new long[dynamos.length];
+            for (int i = 0; i < dynamos.length; i++) storedEnergy[i] = dynamos[i].getEUVar();
+        }
+
+        void restore() {
+            for (int i = 0; i < dynamos.length; i++) dynamos[i].setEUVar(storedEnergy[i]);
+        }
+    }
+
     static final class HostedJob {
 
         private int progress;
@@ -923,6 +1233,8 @@ final class HostedMachineCoordinator {
         private int machineCount;
         private int parallels;
         private long energyUsage;
+        private long nextRecipeCheckTick;
+        private int idleRecipeCheckDelay;
 
         boolean isActive() {
             return maxProgress > 0;
@@ -970,12 +1282,26 @@ final class HostedMachineCoordinator {
             energyUsage = 0;
         }
 
+        void scheduleNextRecipeCheck(long worldTick, boolean started) {
+            int baseDelay = Math.max(1, BlueprintConfig.hostedMachineRecipeCheckIntervalTicks);
+            if (started) {
+                idleRecipeCheckDelay = baseDelay;
+            } else if (idleRecipeCheckDelay <= 0) {
+                idleRecipeCheckDelay = Math.min(MAX_IDLE_RECIPE_CHECK_TICKS, baseDelay * 2);
+            } else {
+                idleRecipeCheckDelay = Math.min(MAX_IDLE_RECIPE_CHECK_TICKS, idleRecipeCheckDelay * 2);
+            }
+            nextRecipeCheckTick = worldTick + Math.max(baseDelay, idleRecipeCheckDelay);
+        }
+
         void writeToNBT(NBTTagCompound tag) {
             tag.setInteger("progress", progress);
             tag.setInteger("maxProgress", maxProgress);
             tag.setInteger("machineCount", machineCount);
             tag.setInteger("parallels", parallels);
             tag.setLong("energyUsage", energyUsage);
+            tag.setLong("nextRecipeCheckTick", nextRecipeCheckTick);
+            tag.setInteger("idleRecipeCheckDelay", idleRecipeCheckDelay);
             writeItems(tag, outputItems);
             writeFluids(tag, outputFluids);
         }
@@ -987,6 +1313,8 @@ final class HostedMachineCoordinator {
             job.machineCount = Math.max(0, tag.getInteger("machineCount"));
             job.parallels = Math.max(0, tag.getInteger("parallels"));
             job.energyUsage = Math.max(0L, tag.getLong("energyUsage"));
+            job.nextRecipeCheckTick = Math.max(0L, tag.getLong("nextRecipeCheckTick"));
+            job.idleRecipeCheckDelay = Math.max(0, tag.getInteger("idleRecipeCheckDelay"));
             job.outputItems = readItems(tag);
             job.outputFluids = readFluids(tag);
             return job;
