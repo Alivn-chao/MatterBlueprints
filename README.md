@@ -1,106 +1,116 @@
-# Example Forge Mod for Minecraft 1.7.10
+# Matter Blueprints
 
-[![](https://jitpack.io/v/GTNewHorizons/ExampleMod1.7.10.svg)](https://jitpack.io/#GTNewHorizons/ExampleMod1.7.10)
-[![](https://github.com/GTNewHorizons/ExampleMod1.7.10/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/GTNewHorizons/ExampleMod1.7.10/actions/workflows/build-and-test.yml)
+面向 **GT New Horizons 2.9.0-beta-2**、**GTNewHorizonsCoreMod 2.9.12** 与 **Matter Manipulator 0.1.46-GTNH** 的蓝图附属模组首阶段版本。
 
-An example mod for Minecraft 1.7.10 with Forge focussed on a stable, updatable setup.
+它把物质操纵者选区保存为可携带的 `.gtbp` 文件，并复用 Matter Manipulator 自己的材料、电量、权限和放置逻辑来搭建。客户端与服务器均需安装本模组。
 
-<!-- omit in toc -->
-### Table of Contents
+## 当前已实现
 
-* [Example Forge Mod for Minecraft 1.7.10](#example-forge-mod-for-minecraft-1710)
-    * [Motivation](#motivation)
-    * [Help! I'm stuck!](#help-im-stuck)
-    * [Getting started](#getting-started)
-    * [Features](#features)
-    * [Files](#files)
-    * [Forge's Access Transformers](#forges-access-transformers)
-    * [Mixins](#mixins)
-    * [Advanced](#advanced)
-    * [Feedback wanted](#feedback-wanted)
+- 从物质操纵者的 A/B 选区保存服务器蓝图
+- 服务器蓝图库的列出、绑定和下载
+- 客户端本地蓝图库的列出、导入和文件夹打开
+- 设置搭建原点、水平旋转、X/Z 镜像
+- 导入后自动切换物质操纵者粘贴模式，以实时方块投影预览位置和方向
+- 原生取点语义：右键锁定在方块表面外侧，Shift+右键锁定在方块内部
+- 锁定后保留普通右键设置操作，仅用 Shift+右键开始搭建
+- 兼容物质操纵者原生变换菜单：三轴旋转、X/Y/Z 镜像、移动粘贴点和整体移动
+- 接管原生“标记堆叠”操作，按蓝图尺寸计算堆叠并同步投影、材料统计和实际搭建
+- 移动与标记堆叠期间使用缓存和节流投影，确认前即可预览，避免反复深拷贝整份蓝图
+- 查看缺失材料或全部材料
+- 原生规划菜单可按锁定后的 GTBP 投影创建“缺失/全部”手动计划或自动下单，兼容旋转、镜像和堆叠
+- 使用手持 MKII/MKIII 物质操纵者自动搭建、取消搭建
+- 自动跳过确定无法放置的悬空/越界方块，并报告方块名称与坐标
+- `.gtbp` gzip JSON、原子写入、安全文件名、体积与解压上限
+- 蓝图格式、Matter Manipulator、依赖模组及方块解析兼容检查
+- 每次搭建重新分配 AE2 P2P 频率，同时保持蓝图内相同频率的分组关系
+- 完整保存 Translocator 1.4.4 的六面附件、红石/快速/钻石升级与物品过滤配置，并随旋转和镜像变换安装面
+- 兼容 Matter Manipulator 0.1.46 写出的空 NBT 字符串，避免 AE 空过滤器导致整份蓝图显示“JSON 无效”
+- 普通方块“蓝图替换配置机”：列出蓝图内全部方块类型，可用实物逐项替换能源仓、玻璃、线圈、外壳等等级
+- 配置机可读取客户端本地蓝图或服务器蓝图库；服务器蓝图先下载，再配置、导出并立即载入物质操纵者
+- 替换结果烘焙进新的 `.gtbp` 文件并保留来源与替换记录，不会修改原蓝图
+- 新增 3×3×3“多方块机器托管中心”：通过 NH 无人机中心托管同类型、已成型的远端多方块，集中使用输入、输出和供电；远端能源仓只决定机器可用电压、安培与超频
 
+## 安装
 
-### Motivation
+把构建出的 JAR 同时放入客户端和服务器的 `mods` 目录。目标环境必须是：
 
-We had our fair share in struggles with build scripts for Minecraft Forge. There are quite a few pitfalls from non-obvious error messages. This Example Project provides you a build system you can adapt to over 90% of Minecraft Forge mods and can easily be updated if need be.
+- GTNH `2.9.0-beta-2`
+- GTNewHorizonsCoreMod `2.9.12`（模组 ID：`dreamcraft`）
+- Matter Manipulator `0.1.46-GTNH`
+- Minecraft `1.7.10`
 
-### Help! I'm stuck!
+蓝图目录位于实例根目录的 `matter-blueprints/`，配置文件位于 `config/matterblueprints.cfg`。
 
-We all have been there! Check out our [FAQ](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/docs/FAQ.md). If that doesn't help, please open an issue.
+## 使用流程
 
-### Getting started
+### 配置方块或机器等级
 
-Creating mod from scratch:
-1. Unzip [project starter](https://github.com/GTNewHorizons/ExampleMod1.7.10/releases/download/master-packages/starter.zip) into project directory.
-2. Replace placeholders in LICENSE-template and rename it to LICENSE, or remove LICENSE-template and put any other license you like on your code. This is an permissive OSS project and we encourage you participate in OSS movement by having permissive license like one in template. You can find out pros and cons of OSS software in [this article](https://www.freecodecamp.org/news/what-is-great-about-developing-open-source-and-what-is-not/)
-3. Ensure your project is under VCS. For example initialise git repository by running `git init; git commit --message "initialized repository"`.
-4. Replace placeholders (edit values in gradle.properties, change example package and class names, etc.)
-5. Run `./gradlew setupDecompWorkspace`
-6. Run `./gradlew build`
-6. Make sure to check out the rest sections of this file.
-7. You are good to go!
+1. 合成并放置“蓝图替换配置机”：工作台位于中心，上下左右为玻璃和红石，四角为铁锭。
+2. 右键打开机器，在“本地”页选择已经下载或放入客户端 `matter-blueprints/` 的蓝图；点击“导入”会直接载入 MM 并进入投影放置，点击“配置替换”才进入等级替换页面。也可以切到“服务器”页下载服务器蓝图，下载完成后会自动回到本地列表。
+3. 替换页会按数量列出蓝图内所有非空气方块类型。选中要替换的类型（例如某级能源输入仓、机器玻璃或线圈）。两个页面顶部均可即时搜索；替换页支持显示名、`modid:block` 注册名以及 `@模组ID`（例如 `@gregtech`）过滤。
+4. 把目标等级的真实方块物品放进机器的替换槽，点击“添加替换”。可以继续为其他方块添加替换。
+5. 填写配置名称后，点击“载入 MM”会把当前配置临时载入手中的物质操纵者，但不会创建本地文件；即使没有设置任何替换也可直接载入。定位、旋转、镜像、堆叠、规划和搭建流程与普通导入一致。
+6. 如果需要长期保留配置版蓝图，单独点击“保存副本”，再点击一次“确认保存”。保存完成后仍由用户决定是否载入 MM；同名文件只会在明确确认后覆盖。
 
-We also have described guidelines for existing mod [migration](docs/migration.md) and [porting](docs/porting.md)
+同一个 GT 机器方块只改变元数据时会保留方向、覆盖板、库存输入总线标记等兼容特征；如果替换成不同注册方块，为避免把不兼容的方块实体数据写入目标，相关专用特征会被清除。原蓝图始终保留，可随时重新配置。
 
-### Features
+### 更换配置机材质
 
- - Updatable: Replace [`build.gradle`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/build.gradle) with a newer version
- - Optional API artifact (.jar)
- - Optional version replacement in Java files
- - Optional shadowing of dependencies
- - Simplified setup of Mixin and example
- - Scala support (add sources under `src/main/scala/` instead of `src/main/java/`)
- - Optional named developer account for consistent player progression during testing
- - Boilerplate forge mod as starting point
- - Improved warnings for pitfalls
- - Git Tags integration for versioning
- - [Jitpack](https://jitpack.io) CI
- - GitHub CI:
-   - Releasing your artifacts on new tags pushed. Push git tag named after version (e.g. 1.0.0) which will trigger a release of artifacts with according names.
-   - Running smoke test for server startup. On any server crash occurring workflow will fail and print the crash log.
+配置机使用基于 GTNH ZPM 普通小机器外壳配色绘制的三张 16×16 材质：`blueprint_configurator_front.png`、`blueprint_configurator_top.png`、`blueprint_configurator_side.png`，位于 `src/main/resources/assets/matterblueprints/textures/blocks/`。放置时正面会朝向玩家，顶面使用顶图，后、左、右、底四面共用侧图。每一面还有对应的 `_emissive.png` 透明发光层，Angelica 会自动让蓝图线、扫描器和状态灯在暗处保持全亮。材质可由 `tools/generate_configurator_textures.py` 重新生成。
 
-### Files
- - [`build.gradle`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/build.gradle): This is the core script of the build process. You should not need to tamper with it, unless you are trying to accomplish something out of the ordinary. __Do not touch this file! You will make a future update near impossible if you do so!__
- - [`gradle.properties`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/gradle.properties): The core configuration file. It includes
- - [`dependencies.gradle[.kts]`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/dependencies.gradle): Add your mod's dependencies in this file. This is separate from the main build script, so you may replace the [`build.gradle`](https://github.com/SinTh0r4s/ExampleMod1.7.10/blob/main/build.gradle) if an update is available.
- - [`repositories.gradle[.kts]`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/repositories.gradle): Add your dependencies' repositories. This is separate from the main build script, so you may replace the [`build.gradle`](https://github.com/SinTh0r4s/ExampleMod1.7.10/blob/main/build.gradle) if an update is available.
- - `addon.gradle[.kts]`: Any additional build logic. This is separate from the main build script, so you may replace the [`build.gradle`](https://github.com/SinTh0r4s/ExampleMod1.7.10/blob/main/build.gradle) if an update is available. See [Advanced](#advanced) for more details.
- - [`jitpack.yml`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/jitpack.yml): Ensures that your mod is available as import over [Jitpack](https://jitpack.io).
- - [`.github/workflows/gradle.yml`](https://github.com/GTNewHorizons/ExampleMod1.7.10/blob/main/.github/workflows/gradle.yml): A simple CI script that will build your mod any time it is pushed to `master` or `main` and publish the result as release in your repository. This feature is free with GitHub if your repository is public.
+### 多方块机器托管中心
 
-### Forge's Access Transformers
+1. 搭建一个 3×3×3 空心结构：外壳使用 ZPM 机器外壳，控制器位于正面中心，内部中心留空。结构至少包含 16 个外壳、物品/流体输入输出仓，并且维护仓位置必须使用“无人机下行模块”。
+2. 每台要托管的远端多方块仍须完整搭建、正常成型并保留自己的能源仓。把它原来的维护仓换成无人机下行模块。远端能源仓不必接电，但其等级和安培数仍决定该机器能跑的配方与超频。
+3. 按 NH 原有方式让中央和远端的下行模块连接到同一个无人机中心。
+4. 把一种远端多方块的控制器物品放进托管中心的控制器槽。中心只会接管与该物品同类型的远端机器，不会混跑不同机器。
+5. 在托管中心安装 1 个特殊能源仓（支持多安/激光）或 1～2 个普通能源仓并接电。所有托管任务共用中心的实时输入功率和储能，功率不足时任务暂停等待，不会偷偷消耗远端存电。
+6. 原料和流体从托管中心输入，成品从托管中心输出。中心只做一次配方检查，把全部同类远端机器的产能合并成一个聚合任务；不会为每台机器建立一份逐 tick 任务。配方、电压、超频、线圈/玻璃等级、机器模式、并行和维护仍以真实远端机器为依据。托管中心支持 GT 原生批处理开关，并在主界面、信息面板和 WAILA 显示聚合进度、实际并行、中央功率和连接机器数。
+7. 关闭托管中心的工作开关时，正在执行的聚合配方会像原生 GT 机器一样先完成并输出，然后停止接取新配方。取出类型控制器、拆坏结构、拆除控制器或卸载区块时，未完成任务会归还远端机器，远端恢复自己的正常运行。
 
-You may activate Forge's Access Transformers by defining a configuration file in `gradle.properties`.
+空闲远端不会再各自反复扫配方；托管中心默认每 5 tick 只做一次聚合配方检查。运行时也只有一个聚合任务、一次进度推进和一次中央扣电，机器数量只提高该次检查可用的总并行，不会线性增加逐 tick 的配方任务数量。可以在 `matterblueprints.cfg` 调高 `hostedMachineRecipeCheckIntervalTicks` 进一步降低空闲消耗，代价是新配方启动稍慢。
 
-Check out the [`example-access-transformers`](https://github.com/GTNewHorizons/ExampleMod1.7.10/tree/example-access-transformers) branch for a working example!
+### 保存与下载
 
-> [!WARNING]
-> Access Transformers are bugged and will deny you any sources for the decompiled Minecraft! Your development environment will still work, but you might face some inconveniences. For example, IntelliJ will not permit searches in dependencies without attached sources.
+1. 手持支持复制的物质操纵者（MKII 或 MKIII），照常设置 A/B 选区。
+2. `/gtbp save 蓝图名`：保存到服务器蓝图库并立即绑定。
+3. `/gtbp list`：列出服务器蓝图。
+4. `/gtbp download 蓝图名`：下载到客户端 `matter-blueprints/蓝图名.gtbp`。
 
-### Mixins
+### 导入与搭建
 
-[Mixins](https://github.com/SpongePowered/Mixin) are used to modify vanilla or mod/library code during runtime without having to edit, recompile, and redistribute the original code. For example, mixins can change a hardcoded value, redirect a method call, inject additional code, access private fields/methods, make a class implement your interface, and more. Mixins are an advanced feature which most normal mods will not require.
+1. 把外部 `.gtbp` 放进客户端的 `matter-blueprints/`。
+2. `/gtbplocal list`：列出本地蓝图。
+3. 手持 MKII/MKIII 物质操纵者，输入 `/gtbplocal import 蓝图名`。导入成功后会自动切换到粘贴模式，显示蓝图方块投影和黄色斜纹框选体；橙色方块标示蓝图原点。
+4. 移动准星选择位置：普通右键把原点锁定在所指方块表面外侧，Shift+右键把原点锁定在所指方块内部，与原生物质操纵者一致。
+5. 按需输入 `/gtbp rotate 90`、`/gtbp mirror x` 等命令，投影会立即更新。
+6. 也可以直接使用物质操纵者原生菜单进行旋转、镜像、移动和“编辑堆叠 → 标记”；这些变换会立即反映在投影中。
+7. `/gtbp materials` 查看变换及堆叠后的缺失材料；`/gtbp materials all` 查看全部材料。
+8. 使用 MKIII 且已连接量子上行链路时，打开物质操纵者的“规划”菜单，可选择蓝图的“缺失计划（手动/自动）”或“全部计划（手动/自动）”。自动模式会立即向 AE 发起缺失物品的合成请求。备用命令为 `/gtbp plan [manual|auto|all|all-auto]`。
+9. 锁定后，普通右键仍可打开物质操纵者设置并调整堆叠、旋转；Shift+右键开始搭建。`/gtbp cancel` 可取消。确定无法放置的方块会被跳过，完成后聊天栏会列出名称和坐标。
 
-Documentation about Mixin features can be found here: [Mixin Wiki](https://github.com/SpongePowered/Mixin/wiki) and [MixinExtras Wiki](https://github.com/LlamaLad7/MixinExtras/wiki)
+蓝图投影期间，右键配置机或其他带方块实体的机器只执行机器交互，不会锁定蓝图原点。`Ctrl+右键` 可随时取消当前蓝图；切换 MM 到普通复制、剪切、几何、交换或线缆等非蓝图功能时也会自动取消。旋转、镜像、移动粘贴点和标记堆叠会继续保留当前蓝图。
 
-There are many examples of mixins in these mods: [Hodgepodge](https://github.com/GTNewHorizons/Hodgepodge) and [Angelica](https://github.com/GTNewHorizons/Angelica)
+`/gtbp origin [x y z]` 和 `/gtbp build` 仍作为命令式备用入口。其他命令：`/gtbp use 蓝图名`、`/gtbp info`、`/gtbplocal folder`。
 
-To enable Mixins in your project, follow one of the example commits:
-- use [normal mixins](https://github.com/GTNewHorizons/ExampleMod1.7.10/commit/beba55615fa8337b7639f0d5b18db6cc8d4826be) for basic and quick registration
-- use [GTNH IMixins](https://github.com/GTNewHorizons/ExampleMod1.7.10/commit/055cd4f18765a421a86c706f53b62116988297e3) (recommended) for the same thing as below, but in a less verbose and more unified manner using the IMixins api
-- use [GTNH Early/Late mixins](https://github.com/GTNewHorizons/ExampleMod1.7.10/commit/c4df59d92164775b69451f3e690239e93d1fc979) to have full control over the registration logic and check for presence of other mods during runtime to load your mixins
+## 当前边界
 
-The extra required dependencies are handled automatically after mixins are enabled.
+- 配置机按蓝图中实际方块类型提供通用替换，不硬编码 NH 或私货模组的等级表；因此附属模组方块也能配置，但需要用户提供目标方块实物。
+- 当前服务器页是服务器存档已有蓝图库，不是公开在线社区。
+- 托管中心首版覆盖使用 GT 标准物品/流体仓、双输入仓和标准 `checkProcessing/onRunningTick` 流程的多方块。依赖专用数据仓、光束仓或在自定义 tick 中绕过 GT 基类运行的少数机器，需要后续逐类适配；中心不会移除这些机器的实体结构。
+- 计划功能需要 MKIII、有效的量子上行链路及其已连接的 AE 网络；未绑定 GTBP 蓝图时，原生规划功能保持不变。
+- Smart Copy 的源坐标不会写入蓝图，跨位置无线链接不会恢复。
+- 目标区块必须已加载，目标必须在所持物质操纵者的有效范围内。
+- 只对 Matter Manipulator `0.1.46-GTNH` 开放搭建；GTNewHorizonsCoreMod 已按 `2.9.12` 验证，版本不同会报告警告但不会仅因 Core 小版本不同阻断蓝图。缺失蓝图方块所需模组或无法解析方块仍会拒绝使用。
 
-### Advanced
+## 使用电脑现有 Java 25 构建
 
-If your project requires custom gradle commands you may add a `addon.gradle[.kts]` to your project. It will be added automatically to the build script. Although we recommend against it, it is sometimes required. When in doubt, feel free to ask us about it. You may break future updates of this build system!
-If you need access to properties modified later in the buildscript, you can also use a `addon.late.gradle[.kts]`.
-For local tweaks that you don't want to commit to Git, like adding extra JVM arguments for testing, use `addon[.late].local.gradle[.kts]`.
+项目会用 Java 25 编译，同时产出 Java 8 兼容字节码。PowerShell 示例：
 
-### Feedback wanted
+```powershell
+$env:JAVA_HOME='C:\Users\PC\AppData\Roaming\PrismLauncher\java\java-runtime-epsilon'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat build
+```
 
-If you tried out this build script we would love to head your opinion! Is there any feature missing for you? Did something not work? Please open an issue and we will try to resolve it asap!
-
-Happy modding,\
-[SinTh0r4s](https://github.com/SinTh0r4s), [TheElan](https://github.com/TheElan) and [basdxz](https://github.com/basdxz)
+产物生成在 `build/libs/`。

@@ -1,5 +1,37 @@
 // Add any additional repositories for your dependencies here.
 
 repositories {
+    // Mainland mirrors are listed first so the project can bootstrap reliably.
+    maven { url = "https://maven.aliyun.com/repository/central" }
+    maven { url = "https://maven.aliyun.com/repository/public" }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Aliyun Kotlin mirror"
+                url = "https://maven.aliyun.com/repository/central"
+            }
+        }
+        filter { includeGroupByRegex("org\\.jetbrains\\.kotlin.*") }
+    }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Aliyun selected central mirror"
+                url = "https://maven.aliyun.com/repository/central"
+            }
+        }
+        filter {
+            includeGroupByRegex("org\\.junit.*")
+            includeGroup("org.apiguardian")
+            includeGroup("org.opentest4j")
+            includeGroup("org.joml")
+        }
+    }
+}
 
+repositories.configureEach { repository ->
+    if (repository.hasProperty("url")
+        && repository.url.toString().startsWith("https://repo.maven.apache.org/maven2")) {
+        repository.url = "https://maven.aliyun.com/repository/central"
+    }
 }
