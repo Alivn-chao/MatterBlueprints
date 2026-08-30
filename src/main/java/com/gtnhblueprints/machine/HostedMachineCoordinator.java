@@ -47,6 +47,7 @@ final class HostedMachineCoordinator {
             return new RemoteHooks(type);
         }
     };
+    private static final Field EXOTIC_ENERGY_HATCHES_FIELD = resolveExoticEnergyHatchesField();
 
     private final MTEHostedMachineController owner;
     private final Map<MTEMultiBlockBase, HostedJob> hosted = new IdentityHashMap<MTEMultiBlockBase, HostedJob>();
@@ -54,6 +55,7 @@ final class HostedMachineCoordinator {
     private final Map<String, HostedJob> pendingJobs = new HashMap<String, HostedJob>();
     private final List<MTEHatch> centralEnergyHatches = new ArrayList<MTEHatch>();
     private MTEMultiBlockBase activeRemote;
+    private RemoteRunningContext runningContext;
     private String statusKey = "matterblueprints.host.status.no_match";
     private long energySpentThisTick;
     private long centralPowerCapacity;
@@ -63,6 +65,8 @@ final class HostedMachineCoordinator {
     }
 
     void refresh() {
+        // A periodic rebuild is cheap and picks up a remote structure replacing one of its hatch-list instances.
+        runningContext = null;
         MTEHatchDroneDownLink downLink = owner.getDroneDownLink();
         ItemStack selector = owner.getControllerSlot();
         if (downLink == null || downLink.getCentre() == null) {
@@ -122,6 +126,7 @@ final class HostedMachineCoordinator {
         persistedClaims.clear();
         pendingJobs.clear();
         activeRemote = null;
+        runningContext = null;
         centralEnergyHatches.clear();
         centralPowerCapacity = 0;
     }
@@ -319,6 +324,7 @@ final class HostedMachineCoordinator {
             activeRemote = null;
             setRemoteActivity(false);
         }
+        runningContext = null;
         iterator.remove();
         persistedClaims.remove(machineKey(remote));
         pendingJobs.remove(machineKey(remote));
@@ -383,14 +389,12 @@ final class HostedMachineCoordinator {
                 return;
             }
             if (hasCustomRunningTick(remote)) {
-                EnergyHatchListSnapshot energyLists = new EnergyHatchListSnapshot(remote, hosted.keySet());
-                RemoteEnergySnapshot energySnapshot = new RemoteEnergySnapshot(remote);
+                RemoteRunningContext context = getRunningContext(remote);
                 try {
-                    energySnapshot.stage(energyUsage);
+                    context.stage(remote, energyUsage);
                     if (!remote.onRunningTick(remote.getControllerSlot())) return;
                 } finally {
-                    energySnapshot.restore();
-                    energyLists.restore(remote);
+                    context.restore(remote);
                 }
             }
             if (!remote.polluteEnvironment(remote.getPollutionPerTick(remote.getControllerSlot()))) {
@@ -407,6 +411,13 @@ final class HostedMachineCoordinator {
         }
         if (!job.isActive() || job.progress < job.maxProgress) return;
         finishRecipe(remote, job);
+    }
+
+    private RemoteRunningContext getRunningContext(MTEMultiBlockBase remote) {
+        if (runningContext == null || runningContext.representative != remote) {
+            runningContext = new RemoteRunningContext(remote, hosted.keySet());
+        }
+        return runningContext;
     }
 
     private void finishRecipe(MTEMultiBlockBase remote, HostedJob job) {
@@ -721,101 +732,111 @@ final class HostedMachineCoordinator {
         }
     }
 
-    /** Makes a custom running hook see every remote energy hatch while still restoring every stored-EU value. */
-    private static final class EnergyHatchListSnapshot {
-
-        private final ArrayList<MTEHatchEnergy> energyHatches;
-        private final List<MTEHatch> exoticEnergyHatches;
-
-        EnergyHatchListSnapshot(MTEMultiBlockBase representative, Set<MTEMultiBlockBase> machines) {
-            energyHatches = representative.mEnergyHatches;
-            exoticEnergyHatches = representative.getExoticEnergyHatches();
-            ArrayList<MTEHatchEnergy> aggregateNormal = new ArrayList<MTEHatchEnergy>();
-            List<MTEHatch> aggregateExotic = new ArrayList<MTEHatch>();
-            for (MTEMultiBlockBase machine : machines) {
-                aggregateNormal.addAll(machine.mEnergyHatches);
-                aggregateExotic.addAll(machine.getExoticEnergyHatches());
-            }
-            representative.mEnergyHatches = aggregateNormal;
-            setExoticEnergyHatches(representative, aggregateExotic);
-        }
-
-        void restore(MTEMultiBlockBase representative) {
-            representative.mEnergyHatches = energyHatches;
-            setExoticEnergyHatches(representative, exoticEnergyHatches);
-        }
-    }
-
     private static void setExoticEnergyHatches(MTEMultiBlockBase machine, List<MTEHatch> hatches) {
+        if (EXOTIC_ENERGY_HATCHES_FIELD == null) return;
         try {
-            Field field = MTEMultiBlockBase.class.getDeclaredField("mExoticEnergyHatches");
-            field.setAccessible(true);
-            field.set(machine, hatches);
-        } catch (ReflectiveOperationException error) {
+            EXOTIC_ENERGY_HATCHES_FIELD.set(machine, hatches);
+        } catch (IllegalAccessException error) {
             MatterBlueprints.LOG.error("Could not swap exotic energy hatches for aggregation", error);
         }
     }
 
-    /**
-     * Lets the remote execute its normal running hook while billing the host. The original energy in every remote
-     * hatch is restored afterwards, so those hatches define voltage/amperage but never supply the hosted recipe.
-     */
-    private static final class RemoteEnergySnapshot {
-
-        private final List<EnergyEntry> entries = new ArrayList<EnergyEntry>();
-        private long capacity;
-
-        RemoteEnergySnapshot(MTEMultiBlockBase remote) {
-            for (MTEHatch hatch : remote.getExoticAndNormalEnergyHatchList()) {
-                if (hatch == null || hatch.getBaseMetaTileEntity() == null) continue;
-                IGregTechTileEntity tile = hatch.getBaseMetaTileEntity();
-                entries.add(new EnergyEntry(tile, tile.getStoredEU()));
-                capacity = saturatingAdd(capacity, tile.getEUCapacity());
-            }
-        }
-
-        boolean canStage(long amount) {
-            return amount <= 0 || (!entries.isEmpty() && capacity >= amount);
-        }
-
-        void stage(long amount) {
-            clearCurrentEnergy();
-            long remaining = amount;
-            for (EnergyEntry entry : entries) {
-                if (remaining <= 0) break;
-                long inserted = Math.min(remaining, entry.tile.getEUCapacity());
-                if (inserted > 0 && entry.tile.increaseStoredEnergyUnits(inserted, false)) remaining -= inserted;
-            }
-            if (remaining > 0) {
-                MatterBlueprints.LOG.error("Could not stage {} EU in remote energy hatches", amount);
-            }
-        }
-
-        void restore() {
-            clearCurrentEnergy();
-            for (EnergyEntry entry : entries) {
-                if (entry.stored > 0 && !entry.tile.increaseStoredEnergyUnits(entry.stored, false)) {
-                    MatterBlueprints.LOG.error("Could not restore {} EU to a remote energy hatch", entry.stored);
-                }
-            }
-        }
-
-        private void clearCurrentEnergy() {
-            for (EnergyEntry entry : entries) {
-                long stored = entry.tile.getStoredEU();
-                if (stored > 0) entry.tile.decreaseStoredEnergyUnits(stored, false);
-            }
+    private static Field resolveExoticEnergyHatchesField() {
+        try {
+            Field field = MTEMultiBlockBase.class.getDeclaredField("mExoticEnergyHatches");
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException error) {
+            MatterBlueprints.LOG.error("Could not resolve exotic energy hatch field", error);
+            return null;
         }
     }
 
-    private static final class EnergyEntry {
+    /**
+     * Reusable compatibility context for a remote's custom onRunningTick hook. Building the aggregate hatch lists and
+     * energy-entry objects every tick was the largest host-side allocation seen in JFR. This context is rebuilt only
+     * when the hosted set is refreshed, while primitive saved-energy values are overwritten in place each tick.
+     */
+    private static final class RemoteRunningContext {
 
-        private final IGregTechTileEntity tile;
-        private final long stored;
+        private final MTEMultiBlockBase representative;
+        private final ArrayList<MTEHatchEnergy> originalNormal;
+        private final List<MTEHatch> originalExotic;
+        private final ArrayList<MTEHatchEnergy> aggregateNormal = new ArrayList<MTEHatchEnergy>();
+        private final List<MTEHatch> aggregateExotic = new ArrayList<MTEHatch>();
+        private final IGregTechTileEntity[] energyTiles;
+        private final long[] savedEnergy;
+        private boolean energyCaptured;
 
-        EnergyEntry(IGregTechTileEntity tile, long stored) {
-            this.tile = tile;
-            this.stored = stored;
+        RemoteRunningContext(MTEMultiBlockBase representative, Set<MTEMultiBlockBase> machines) {
+            this.representative = representative;
+            originalNormal = representative.mEnergyHatches;
+            originalExotic = representative.getExoticEnergyHatches();
+
+            int validHatchCount = 0;
+            for (MTEMultiBlockBase machine : machines) {
+                aggregateNormal.addAll(machine.mEnergyHatches);
+                aggregateExotic.addAll(machine.getExoticEnergyHatches());
+                validHatchCount += countValid(machine.mEnergyHatches);
+                validHatchCount += countValid(machine.getExoticEnergyHatches());
+            }
+            energyTiles = new IGregTechTileEntity[validHatchCount];
+            savedEnergy = new long[validHatchCount];
+            int index = 0;
+            for (MTEHatch hatch : aggregateNormal) index = addEnergyTile(hatch, energyTiles, index);
+            for (MTEHatch hatch : aggregateExotic) index = addEnergyTile(hatch, energyTiles, index);
+        }
+
+        void stage(MTEMultiBlockBase remote, long amount) {
+            remote.mEnergyHatches = aggregateNormal;
+            setExoticEnergyHatches(remote, aggregateExotic);
+            energyCaptured = false;
+            for (int i = 0; i < energyTiles.length; i++) savedEnergy[i] = energyTiles[i].getStoredEU();
+            energyCaptured = true;
+            clearCurrentEnergy();
+            long remaining = amount;
+            for (IGregTechTileEntity tile : energyTiles) {
+                if (remaining <= 0) break;
+                long inserted = Math.min(remaining, tile.getEUCapacity());
+                if (inserted > 0 && tile.increaseStoredEnergyUnits(inserted, false)) remaining -= inserted;
+            }
+            if (remaining > 0) MatterBlueprints.LOG.error("Could not stage {} EU in remote energy hatches", amount);
+        }
+
+        void restore(MTEMultiBlockBase remote) {
+            if (energyCaptured) {
+                clearCurrentEnergy();
+                for (int i = 0; i < energyTiles.length; i++) {
+                    long stored = savedEnergy[i];
+                    if (stored > 0 && !energyTiles[i].increaseStoredEnergyUnits(stored, false)) {
+                        MatterBlueprints.LOG.error("Could not restore {} EU to a remote energy hatch", stored);
+                    }
+                }
+                energyCaptured = false;
+            }
+            remote.mEnergyHatches = originalNormal;
+            setExoticEnergyHatches(remote, originalExotic);
+        }
+
+        private void clearCurrentEnergy() {
+            for (IGregTechTileEntity tile : energyTiles) {
+                long stored = tile.getStoredEU();
+                if (stored > 0) tile.decreaseStoredEnergyUnits(stored, false);
+            }
+        }
+
+        private static int countValid(List<? extends MTEHatch> hatches) {
+            int count = 0;
+            for (MTEHatch hatch : hatches) {
+                if (hatch != null && hatch.getBaseMetaTileEntity() != null) count++;
+            }
+            return count;
+        }
+
+        private static int addEnergyTile(MTEHatch hatch, IGregTechTileEntity[] destination, int index) {
+            if (hatch == null || hatch.getBaseMetaTileEntity() == null) return index;
+            destination[index] = hatch.getBaseMetaTileEntity();
+            return index + 1;
         }
     }
 
