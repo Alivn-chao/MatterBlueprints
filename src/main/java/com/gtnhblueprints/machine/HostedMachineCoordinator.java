@@ -36,9 +36,13 @@ import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.api.metatileentity.implementations.MTEHatchEnergy;
 import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.check.CheckRecipeResult;
+import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.util.ExoticEnergyInputHelper;
+import gregtech.api.util.GTUtility;
 import gregtech.common.tileentities.machines.IDualInputHatch;
 import gregtech.common.tileentities.machines.multi.drone.MTEHatchDroneDownLink;
+import gregtech.common.tileentities.machines.multi.turbines.MTELargeTurbineBase;
+import gregtech.common.tileentities.machines.multi.xlturbines.MTEXLTurbineBase;
 
 final class HostedMachineCoordinator {
 
@@ -527,22 +531,51 @@ final class HostedMachineCoordinator {
         }
 
         if (allowNewRecipe) {
+            List<MTEMultiBlockBase> idleTurbines = idleTurbines(worldTick);
+            Map<MTEMultiBlockBase, HostedTurbineFlowScheduler.FlowPlan> turbinePlans = idleTurbines.isEmpty()
+                ? Collections.<MTEMultiBlockBase, HostedTurbineFlowScheduler.FlowPlan>emptyMap()
+                : HostedTurbineFlowScheduler.plan(owner, idleTurbines);
             for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
                 HostedJob job = entry.getValue();
                 if (job.isActive() || worldTick < job.nextRecipeCheckTick) continue;
-                boolean started = startGeneratorRecipe(entry.getKey(), job);
+                MTEMultiBlockBase remote = entry.getKey();
+                HostedTurbineFlowScheduler.FlowPlan plan = turbinePlans.get(remote);
+                if (HostedTurbineFlowScheduler.isTurbine(remote) && plan == null) {
+                    // Avoid polling every empty turbine every tick while still responding within one second to refills.
+                    job.nextRecipeCheckTick = worldTick + 20L;
+                    job.idleRecipeCheckDelay = 0;
+                    continue;
+                }
+                boolean started = startGeneratorRecipe(remote, job, plan);
                 job.scheduleNextRecipeCheck(worldTick, started);
             }
         }
     }
 
-    private boolean startGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job) {
+    private List<MTEMultiBlockBase> idleTurbines(long worldTick) {
+        List<MTEMultiBlockBase> turbines = new ArrayList<MTEMultiBlockBase>();
+        for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
+            HostedJob job = entry.getValue();
+            if (!job.isActive() && worldTick >= job.nextRecipeCheckTick
+                && HostedTurbineFlowScheduler.isTurbine(entry.getKey())) {
+                tryRefillRemoteTurbines(entry.getKey());
+                turbines.add(entry.getKey());
+            }
+        }
+        return turbines;
+    }
+
+    private boolean startGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job,
+        HostedTurbineFlowScheduler.FlowPlan plan) {
         if (!isUsable(remote) || !isSupportedGenerator(remote)) return false;
+        tryRefillRemoteTurbines(remote);
         HatchSnapshot snapshot = new HatchSnapshot(remote);
         snapshot.useOwnerIO(owner, remote);
+        HostedTurbineFlowScheduler.FluidQuota quota = null;
         boolean successful = false;
         try {
             remote.startRecipeProcessing();
+            quota = HostedTurbineFlowScheduler.restrict(remote, plan);
             CheckRecipeResult result = remote.checkProcessing();
             remote.setCheckRecipeResult(result);
             successful = result.wasSuccessful();
@@ -551,9 +584,13 @@ final class HostedMachineCoordinator {
             remote.stopMachine();
         } finally {
             try {
-                remote.endRecipeProcessing();
+                if (quota != null) quota.restore();
             } finally {
-                snapshot.restore(remote);
+                try {
+                    remote.endRecipeProcessing();
+                } finally {
+                    snapshot.restore(remote);
+                }
             }
         }
         if (!successful || remote.mMaxProgresstime <= 0) return false;
@@ -576,6 +613,7 @@ final class HostedMachineCoordinator {
         DynamoEnergySnapshot dynamoSnapshot = new DynamoEnergySnapshot(remote);
         try {
             if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
+            tryRefillRemoteTurbines(remote);
             if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
 
             ioSnapshot.useOwnerIO(owner, remote);
@@ -681,6 +719,47 @@ final class HostedMachineCoordinator {
         }
         remote.mRuntime++;
         return true;
+    }
+
+    /**
+     * Ordinary large turbines do not refill their controller slot themselves. Pull a spare from that physical
+     * turbine's own input busses before central I/O is staged. XL turbines keep GT's native 12-slot refill routine;
+     * invoking it here ensures it also sees the remote busses while the controller is disabled by hosting.
+     */
+    private void tryRefillRemoteTurbines(MTEMultiBlockBase remote) {
+        if (!HostedTurbineFlowScheduler.isTurbine(remote)) return;
+        if (remote instanceof MTEXLTurbineBase) {
+            if (remote.getMaxParallelRecipes() < 12) REMOTE_HOOKS.get(remote.getClass()).invokeTurbineRefill(remote);
+            return;
+        }
+        if (!(remote instanceof MTELargeTurbineBase) || remote.isCorrectMachinePart(remote.getControllerSlot())) return;
+
+        ItemStack replacement = null;
+        CheckRecipeResult previousResult = remote.getCheckRecipeResult();
+        boolean extractionSuccessful = false;
+        try {
+            remote.setCheckRecipeResult(CheckRecipeResultRegistry.SUCCESSFUL);
+            remote.startRecipeProcessing();
+            try {
+                for (ItemStack candidate : remote.getStoredInputs()) {
+                    if (!remote.isCorrectMachinePart(candidate)) continue;
+                    ItemStack oneRotor = GTUtility.copyAmount(1, candidate);
+                    if (remote.depleteInput(oneRotor)) {
+                        replacement = oneRotor;
+                        break;
+                    }
+                }
+            } finally {
+                remote.endRecipeProcessing();
+            }
+            extractionSuccessful = remote.getCheckRecipeResult().wasSuccessful();
+        } finally {
+            remote.setCheckRecipeResult(previousResult);
+        }
+        if (replacement == null || !extractionSuccessful) return;
+        remote.setInventorySlotContents(1, replacement);
+        remote.updateSlots();
+        remote.markDirty();
     }
 
     private RemoteRunningContext getRunningContext(MTEMultiBlockBase remote) {
@@ -806,7 +885,7 @@ final class HostedMachineCoordinator {
         return left * right;
     }
 
-    private static long getDynamoCapacity(MTEMultiBlockBase machine) {
+    static long getDynamoCapacity(MTEMultiBlockBase machine) {
         List<MTEHatch> hatches = new ArrayList<MTEHatch>(machine.mDynamoHatches.size() + 1);
         hatches.addAll(machine.mDynamoHatches);
         hatches.addAll(machine.getExoticDynamoHatches());
@@ -853,6 +932,7 @@ final class HostedMachineCoordinator {
         private final Field longEnergyOutput;
         private final Field trueOutput;
         private final Field chemicalEfficiency;
+        private final Method turbineRefill;
         private final boolean hasCustomRunningTick;
 
         RemoteHooks(Class<?> type) {
@@ -863,7 +943,19 @@ final class HostedMachineCoordinator {
             longEnergyOutput = findOptionalField(type, "lEUt");
             trueOutput = findOptionalField(type, "trueOutput");
             chemicalEfficiency = findOptionalField(type, "tEff");
+            turbineRefill = findLifecycleMethod(type, "tryRefillTurbineHolder");
             hasCustomRunningTick = declaresBeforeBase(type, "onRunningTick", ItemStack.class);
+        }
+
+        boolean invokeTurbineRefill(MTEMultiBlockBase remote) {
+            if (turbineRefill == null) return false;
+            try {
+                turbineRefill.invoke(remote);
+                return true;
+            } catch (ReflectiveOperationException error) {
+                MatterBlueprints.LOG.warn("Could not refill turbines for {}", remote.mName, error);
+                return false;
+            }
         }
 
         long getActualEnergyUsage(MTEMultiBlockBase remote) {

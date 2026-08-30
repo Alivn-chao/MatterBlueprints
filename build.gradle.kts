@@ -8,13 +8,11 @@ version = "0.3.0-beta2"
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(25))
-        vendor.set(JvmVendorSpec.MICROSOFT)
     }
 }
 
 val localJava25 = javaToolchains.compilerFor {
     languageVersion.set(JavaLanguageVersion.of(25))
-    vendor.set(JvmVendorSpec.MICROSOFT)
 }
 val minecraftJava8 = javaToolchains.compilerFor {
     languageVersion.set(JavaLanguageVersion.of(8))
