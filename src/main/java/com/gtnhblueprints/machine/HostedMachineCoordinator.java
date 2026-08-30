@@ -44,6 +44,8 @@ final class HostedMachineCoordinator {
 
     private static final int CENTRAL_POWER_CACHE_TICKS = 20;
     private static final int MAINTENANCE_REFRESH_TICKS = 20;
+    private static final int MACHINE_PART_CHECK_TICKS = 20;
+    private static final int MAX_IDLE_RECIPE_CHECK_TICKS = 100;
     private static final ClassValue<RemoteHooks> REMOTE_HOOKS = new ClassValue<RemoteHooks>() {
 
         @Override
@@ -64,6 +66,8 @@ final class HostedMachineCoordinator {
     private String statusKey = "matterblueprints.host.status.no_match";
     private long energySpentThisTick;
     private long centralPowerCapacity;
+    private long nextRecipeCheckTick;
+    private int idleRecipeCheckDelay;
 
     HostedMachineCoordinator(MTEHostedMachineController owner) {
         this.owner = owner;
@@ -111,15 +115,16 @@ final class HostedMachineCoordinator {
             if (job == null || !job.isActive() || !isUsable(activeRemote)) {
                 if (job != null) job.restoreToRemote(activeRemote);
                 activeRemote = null;
-                setRemoteActivity(false);
+                deactivateRemotes();
             } else {
                 advanceRecipe(activeRemote, job, worldTick);
             }
         }
         if (allowNewRecipe && activeRemote == null && !hosted.isEmpty()
-            && worldTick % BlueprintConfig.hostedMachineRecipeCheckIntervalTicks == 0) {
+            && worldTick >= nextRecipeCheckTick) {
             MTEMultiBlockBase representative = chooseRepresentative();
-            if (representative != null) startRecipe(representative);
+            boolean started = representative != null && startRecipe(representative);
+            scheduleNextRecipeCheck(worldTick, started);
         }
     }
 
@@ -315,11 +320,23 @@ final class HostedMachineCoordinator {
         return result;
     }
 
-    private void setRemoteActivity(boolean active) {
+    private void deactivateRemotes() {
         for (MTEMultiBlockBase remote : hosted.keySet()) {
             IGregTechTileEntity tile = remote.getBaseMetaTileEntity();
-            if (tile != null && remote.isValid()) tile.setActive(active);
+            if (tile != null && remote.isValid()) tile.setActive(false);
         }
+    }
+
+    private void scheduleNextRecipeCheck(long worldTick, boolean started) {
+        int baseDelay = Math.max(1, BlueprintConfig.hostedMachineRecipeCheckIntervalTicks);
+        if (started) {
+            idleRecipeCheckDelay = baseDelay;
+        } else if (idleRecipeCheckDelay <= 0) {
+            idleRecipeCheckDelay = Math.min(MAX_IDLE_RECIPE_CHECK_TICKS, baseDelay * 2);
+        } else {
+            idleRecipeCheckDelay = Math.min(MAX_IDLE_RECIPE_CHECK_TICKS, idleRecipeCheckDelay * 2);
+        }
+        nextRecipeCheckTick = worldTick + Math.max(baseDelay, idleRecipeCheckDelay);
     }
 
     private boolean isEligible(MTEMultiBlockBase remote, ItemStack selector) {
@@ -371,7 +388,7 @@ final class HostedMachineCoordinator {
         if (job != null) job.restoreToRemote(remote);
         if (remote == activeRemote) {
             activeRemote = null;
-            setRemoteActivity(false);
+            deactivateRemotes();
         }
         runningContext = null;
         iterator.remove();
@@ -387,7 +404,7 @@ final class HostedMachineCoordinator {
         return tile.getWorld().provider.dimensionId + ":" + tile.getXCoord() + ":" + tile.getYCoord() + ":" + tile.getZCoord();
     }
 
-    private void startRecipe(MTEMultiBlockBase remote) {
+    private boolean startRecipe(MTEMultiBlockBase remote) {
         HatchSnapshot snapshot = new HatchSnapshot(remote);
         snapshot.useOwnerIO(owner, remote);
         AggregateCapacitySnapshot capacitySnapshot = new AggregateCapacitySnapshot(remote, hosted.keySet());
@@ -417,9 +434,10 @@ final class HostedMachineCoordinator {
             if (job != null) {
                 job.captureFromRemote(remote, hosted.size(), getCompletedRecipeCount(remote), getActualEnergyUsage(remote));
                 activeRemote = remote;
-                setRemoteActivity(true);
+                return true;
             }
         }
+        return false;
     }
 
     private void advanceRecipe(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
@@ -431,7 +449,7 @@ final class HostedMachineCoordinator {
             // The disabled remote still performs its own base maintenance synchronization. Refreshing here once per
             // second covers forks that skip it without repeating six hatch reads for every aggregate tick.
             if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
-            if (!remote.doRandomMaintenanceDamage()) return;
+            if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
             long energyUsage = getActualEnergyUsage(remote);
             if (!drainCentralEnergy(energyUsage)) {
                 statusKey = "matterblueprints.host.status.no_central_power";
@@ -460,6 +478,14 @@ final class HostedMachineCoordinator {
         }
         if (!job.isActive() || job.progress < job.maxProgress) return;
         finishRecipe(remote, job);
+    }
+
+    private boolean checkMachinePartAndMaintenance(MTEMultiBlockBase remote, long worldTick) {
+        if (remote.mRuntime >= 1000 || worldTick % MACHINE_PART_CHECK_TICKS == 0) {
+            return remote.doRandomMaintenanceDamage();
+        }
+        remote.mRuntime++;
+        return true;
     }
 
     private RemoteRunningContext getRunningContext(MTEMultiBlockBase remote) {
@@ -493,7 +519,6 @@ final class HostedMachineCoordinator {
         remote.setLastWorkingTick(remote.getTotalRunTime());
         job.clear();
         activeRemote = null;
-        setRemoteActivity(false);
         if (!itemsAccepted || !fluidsAccepted) {
             statusKey = "matterblueprints.host.status.output_full";
         }
