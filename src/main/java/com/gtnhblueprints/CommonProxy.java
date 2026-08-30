@@ -14,6 +14,7 @@ import com.gtnhblueprints.machine.HostedMachineRegistry;
 import com.gtnhblueprints.network.BlueprintNetwork;
 import com.gtnhblueprints.registry.ModBlocks;
 import com.gtnhblueprints.registry.ModMachines;
+import com.gtnhblueprints.registry.ModItems;
 import com.gtnhblueprints.service.BlueprintBuildService;
 import com.gtnhblueprints.service.BlueprintLibrary;
 import com.gtnhblueprints.service.BlueprintPlanInterceptor;
@@ -31,6 +32,7 @@ public class CommonProxy implements IGuiHandler {
     public void preInit(FMLPreInitializationEvent event) {
         BlueprintConfig.load(event.getSuggestedConfigurationFile());
         ModBlocks.preInit();
+        ModItems.preInit();
         ModMachines.preInit();
         File gameDir = event.getModConfigurationDirectory().getParentFile();
         BlueprintLibrary.initialize(new File(gameDir, "matter-blueprints"));
@@ -40,6 +42,7 @@ public class CommonProxy implements IGuiHandler {
 
     public void init(FMLInitializationEvent event) {
         ModBlocks.init();
+        ModItems.init();
         ModMachines.init();
         BlueprintPlanInterceptor.install();
         BlueprintBuildService service = BlueprintBuildService.INSTANCE;

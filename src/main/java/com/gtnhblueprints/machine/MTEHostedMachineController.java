@@ -46,13 +46,11 @@ import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.ICasingTextureProvider;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
-import gregtech.api.metatileentity.implementations.MTEHatchMaintenance;
+import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.structure.error.StructureError;
-import gregtech.api.structure.error.StructureErrorRegistry;
 import gregtech.api.util.MultiblockTooltipBuilder;
-import gregtech.common.tileentities.machines.multi.drone.MTEHatchDroneDownLink;
 import mcp.mobius.waila.api.IWailaConfigHandler;
 import mcp.mobius.waila.api.IWailaDataAccessor;
 
@@ -115,9 +113,6 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         checkHasAnyOutput(errors);
         checkOneMaintenanceHatch(errors);
         checkExoticAndNormalEnergyHatches(errors);
-        if (mMaintenanceHatches.size() != 1 || !(mMaintenanceHatches.get(0) instanceof MTEHatchDroneDownLink)) {
-            errors.add(StructureErrorRegistry.UNKNOWN_STRUCTURE_ERROR);
-        }
     }
 
     @Override
@@ -274,11 +269,24 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             String.format(Locale.ROOT, "%.1f", percent));
     }
 
-    public MTEHatchDroneDownLink getDroneDownLink() {
-        for (MTEHatchMaintenance hatch : mMaintenanceHatches) {
-            if (hatch instanceof MTEHatchDroneDownLink) return (MTEHatchDroneDownLink) hatch;
+    public BindingResult toggleHostedBinding(MTEMultiBlockBase machine) {
+        boolean bound = coordinator.toggleBinding(machine);
+        IGregTechTileEntity tile = getBaseMetaTileEntity();
+        if (tile instanceof TileEntity) ((TileEntity) tile).markDirty();
+        return new BindingResult(
+            bound ? "matterblueprints.binder.machine_added" : "matterblueprints.binder.machine_removed",
+            coordinator.getBindingCount());
+    }
+
+    public static final class BindingResult {
+
+        public final String translationKey;
+        public final int boundCount;
+
+        private BindingResult(String translationKey, int boundCount) {
+            this.translationKey = translationKey;
+            this.boundCount = boundCount;
         }
-        return null;
     }
 
     void releaseHostedMachine(gregtech.api.metatileentity.implementations.MTEMultiBlockBase machine) {
@@ -407,7 +415,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addController(tr("matterblueprints.host.tooltip.controller"))
             .addCasing("16+", tr("matterblueprints.host.tooltip.casing"), false)
             .addMaintenanceHatch(
-                tr("matterblueprints.host.tooltip.downlink_count"),
+                tr("matterblueprints.host.tooltip.maintenance_count"),
                 tr("matterblueprints.host.tooltip.any_casing"),
                 1)
             .addEnergyHatch(tr("matterblueprints.host.tooltip.energy"), tr("matterblueprints.host.tooltip.any_casing"), 1)

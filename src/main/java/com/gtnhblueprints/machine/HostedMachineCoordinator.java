@@ -17,11 +17,16 @@ import java.util.function.Supplier;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
+import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.gtnhblueprints.BlueprintConfig;
 import com.gtnhblueprints.MatterBlueprints;
 
+import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatchInput;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
@@ -33,7 +38,6 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.util.ExoticEnergyInputHelper;
 import gregtech.common.tileentities.machines.IDualInputHatch;
-import gregtech.common.tileentities.machines.multi.drone.DroneConnection;
 import gregtech.common.tileentities.machines.multi.drone.MTEHatchDroneDownLink;
 
 final class HostedMachineCoordinator {
@@ -51,6 +55,7 @@ final class HostedMachineCoordinator {
 
     private final MTEHostedMachineController owner;
     private final Map<MTEMultiBlockBase, HostedJob> hosted = new IdentityHashMap<MTEMultiBlockBase, HostedJob>();
+    private final Set<String> boundMachines = new HashSet<String>();
     private final Set<String> persistedClaims = new HashSet<String>();
     private final Map<String, HostedJob> pendingJobs = new HashMap<String, HostedJob>();
     private final List<MTEHatch> centralEnergyHatches = new ArrayList<MTEHatch>();
@@ -67,11 +72,10 @@ final class HostedMachineCoordinator {
     void refresh() {
         // A periodic rebuild is cheap and picks up a remote structure replacing one of its hatch-list instances.
         runningContext = null;
-        MTEHatchDroneDownLink downLink = owner.getDroneDownLink();
         ItemStack selector = owner.getControllerSlot();
-        if (downLink == null || downLink.getCentre() == null) {
+        if (boundMachines.isEmpty()) {
             releaseAll();
-            statusKey = "matterblueprints.host.status.no_link";
+            statusKey = "matterblueprints.host.status.no_bindings";
             return;
         }
         if (selector == null) {
@@ -82,10 +86,9 @@ final class HostedMachineCoordinator {
 
         Set<MTEMultiBlockBase> discovered = Collections
             .newSetFromMap(new IdentityHashMap<MTEMultiBlockBase, Boolean>());
-        for (DroneConnection connection : downLink.getCentre().getConnectionList()) {
-            if (connection == null || !connection.isValid()) continue;
-            MTEMultiBlockBase remote = connection.getLinkedMachine();
-            if (!isEligible(remote, connection, selector)) continue;
+        for (String machine : boundMachines) {
+            MTEMultiBlockBase remote = resolveMachine(machine);
+            if (!isEligible(remote, selector)) continue;
             discovered.add(remote);
             acquire(remote);
         }
@@ -142,6 +145,23 @@ final class HostedMachineCoordinator {
         }
     }
 
+    boolean toggleBinding(MTEMultiBlockBase target) {
+        String key = machineKey(target);
+        if (boundMachines.remove(key)) {
+            releaseRemote(target);
+            statusKey = boundMachines.isEmpty() ? "matterblueprints.host.status.no_bindings"
+                : "matterblueprints.host.status.no_match";
+            return false;
+        }
+        boundMachines.add(key);
+        refresh();
+        return true;
+    }
+
+    int getBindingCount() {
+        return boundMachines.size();
+    }
+
     void writeToNBT(NBTTagCompound tag) {
         NBTTagList list = new NBTTagList();
         Map<String, HostedJob> claims = new HashMap<String, HostedJob>(pendingJobs);
@@ -158,6 +178,10 @@ final class HostedMachineCoordinator {
             list.appendTag(claimTag);
         }
         tag.setTag("mbHostClaims", list);
+
+        NBTTagList bindings = new NBTTagList();
+        for (String machine : boundMachines) bindings.appendTag(new NBTTagString(machine));
+        tag.setTag("mbHostBindings", bindings);
     }
 
     void readFromNBT(NBTTagCompound tag) {
@@ -171,6 +195,12 @@ final class HostedMachineCoordinator {
             persistedClaims.add(key);
             HostedJob job = HostedJob.readFromNBT(claimTag);
             if (job.isActive()) pendingJobs.put(key, job);
+        }
+        boundMachines.clear();
+        NBTTagList bindings = tag.getTagList("mbHostBindings", 8);
+        for (int i = 0; i < bindings.tagCount(); i++) {
+            String key = bindings.getStringTagAt(i);
+            if (!key.isEmpty()) boundMachines.add(key);
         }
     }
 
@@ -292,11 +322,31 @@ final class HostedMachineCoordinator {
         }
     }
 
-    private boolean isEligible(MTEMultiBlockBase remote, DroneConnection connection, ItemStack selector) {
+    private boolean isEligible(MTEMultiBlockBase remote, ItemStack selector) {
         if (remote == null || remote == owner || !remote.isValid() || !remote.mMachine) return false;
-        if (!selector.isItemEqual(connection.getMachineItem())) return false;
+        ItemStack remoteController = remote.getStackForm(1);
+        if (remoteController == null || !selector.isItemEqual(remoteController)) return false;
         List<MTEHatch> energyHatches = remote.getExoticAndNormalEnergyHatchList();
         return !energyHatches.isEmpty() && ExoticEnergyInputHelper.getTotalEuMulti(energyHatches) > 0;
+    }
+
+    private MTEMultiBlockBase resolveMachine(String key) {
+        String[] parts = key.split(":", -1);
+        if (parts.length != 4) return null;
+        try {
+            World world = DimensionManager.getWorld(Integer.parseInt(parts[0]));
+            if (world == null) return null;
+            int x = Integer.parseInt(parts[1]);
+            int y = Integer.parseInt(parts[2]);
+            int z = Integer.parseInt(parts[3]);
+            if (!world.blockExists(x, y, z)) return null;
+            TileEntity tile = world.getTileEntity(x, y, z);
+            if (!(tile instanceof IGregTechTileEntity)) return null;
+            IMetaTileEntity metaTileEntity = ((IGregTechTileEntity) tile).getMetaTileEntity();
+            return metaTileEntity instanceof MTEMultiBlockBase ? (MTEMultiBlockBase) metaTileEntity : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private void acquire(MTEMultiBlockBase remote) {
