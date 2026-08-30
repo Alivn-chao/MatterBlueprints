@@ -34,6 +34,9 @@ import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructa
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
 import com.gtnewhorizon.structurelib.structure.StructureDefinition;
+import com.gtnewhorizons.modularui.common.widget.DynamicPositionedColumn;
+import com.gtnewhorizons.modularui.common.widget.FakeSyncWidget;
+import com.gtnewhorizons.modularui.common.widget.SlotWidget;
 import com.gtnhblueprints.BlueprintConfig;
 
 import gregtech.api.casing.Casings;
@@ -64,6 +67,8 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
 
     private final HostedMachineCoordinator coordinator = new HostedMachineCoordinator(this);
     private int casingCount;
+    private int guiHostedProgress;
+    private int guiHostedMaxProgress;
 
     public MTEHostedMachineController(int id, String name, String regionalName) {
         super(id, name, regionalName);
@@ -161,9 +166,30 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     protected void runMachine(IGregTechTileEntity tileEntity, long tick) {}
 
+    @Override
+    protected void drawTexts(DynamicPositionedColumn screenElements, SlotWidget controllerSlot) {
+        super.drawTexts(screenElements, controllerSlot);
+        screenElements.widget(
+            new FakeSyncWidget.IntegerSyncer(
+                () -> guiHostedProgress,
+                value -> {
+                    guiHostedProgress = value;
+                    mProgresstime = value;
+                }));
+        screenElements.widget(
+            new FakeSyncWidget.IntegerSyncer(
+                () -> guiHostedMaxProgress,
+                value -> {
+                    guiHostedMaxProgress = value;
+                    mMaxProgresstime = value;
+                }));
+    }
+
     private void synchronizeHostedDisplayState() {
-        mProgresstime = coordinator.getActiveProgress();
-        mMaxProgresstime = coordinator.getActiveMaxProgress();
+        guiHostedProgress = coordinator.getActiveProgress();
+        guiHostedMaxProgress = coordinator.getActiveMaxProgress();
+        mProgresstime = guiHostedProgress;
+        mMaxProgresstime = guiHostedMaxProgress;
         mOutputItems = coordinator.getActiveOutputItems();
         mOutputFluids = coordinator.getActiveOutputFluids();
         if (mMaxProgresstime > 0) {
@@ -236,10 +262,10 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
      */
     @Override
     protected String generateCurrentProgress() {
-        // The GUI calls this on the client. The coordinator is server-only, while these standard GT fields are synced.
-        int maximum = mMaxProgresstime;
+        // The coordinator is server-only. These dedicated values are synchronized explicitly in drawTexts().
+        int maximum = guiHostedMaxProgress;
         if (maximum <= 0) return "";
-        int progress = mProgresstime;
+        int progress = guiHostedProgress;
         double percent = Math.min(100.0D, progress * 100.0D / maximum);
         return StatCollector.translateToLocalFormatted(
             "matterblueprints.host.gui.progress",
