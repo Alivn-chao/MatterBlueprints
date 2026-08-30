@@ -354,7 +354,6 @@ final class HostedMachineCoordinator {
         IGregTechTileEntity tile = remote.getBaseMetaTileEntity();
         if (tile == null || remote.mMaxProgresstime > 0) return;
         String key = machineKey(remote);
-        if (!tile.isAllowedToWork() && !persistedClaims.contains(key)) return;
         if (!HostedMachineRegistry.claim(remote, owner)) return;
         HostedJob restoredJob = pendingJobs.remove(key);
         if (restoredJob != null && restoredJob.isActive() && activeRemote != null) restoredJob = null;
