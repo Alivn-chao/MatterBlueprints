@@ -1,6 +1,7 @@
 package com.gtnhblueprints.machine;
 
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.onElementPass;
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock;
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.transpose;
 import static gregtech.api.enums.HatchElement.InputBus;
 import static gregtech.api.enums.HatchElement.InputHatch;
@@ -40,6 +41,8 @@ import com.gtnewhorizons.modularui.common.widget.DynamicPositionedColumn;
 import com.gtnewhorizons.modularui.common.widget.FakeSyncWidget;
 import com.gtnewhorizons.modularui.common.widget.SlotWidget;
 import com.gtnhblueprints.BlueprintConfig;
+import com.gtnhblueprints.block.BlockHostedMachineCasing;
+import com.gtnhblueprints.registry.ModBlocks;
 
 import gregtech.api.casing.Casings;
 import gregtech.api.enums.Textures;
@@ -51,6 +54,7 @@ import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
 import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
+import gregtech.api.render.TextureFactory;
 import gregtech.api.structure.error.StructureError;
 import gregtech.api.util.MultiblockTooltipBuilder;
 import mcp.mobius.waila.api.IWailaConfigHandler;
@@ -60,9 +64,11 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     implements ISurvivalConstructable, ICasingTextureProvider {
 
     private static final String STRUCTURE_PIECE = "main";
-    private static final int OFFSET_X = 1;
+    private static final int OFFSET_X = 4;
     private static final int OFFSET_Y = 1;
     private static final int OFFSET_Z = 0;
+    private static final int MINIMUM_CASINGS = 32;
+    private static final String[][] STRUCTURE_SHAPE = transpose(HostedMachineStructure.LAYERS);
     private static IStructureDefinition<MTEHostedMachineController> structureDefinition;
 
     private final HostedMachineCoordinator coordinator = new HostedMachineCoordinator(this);
@@ -89,26 +95,27 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             structureDefinition = StructureDefinition.<MTEHostedMachineController>builder()
                 .addShape(
                     STRUCTURE_PIECE,
-                    transpose(
-                        new String[][] {
-                            { "CCC", "CCC", "CCC" },
-                            { "C~C", "C-C", "CCC" },
-                            { "CCC", "CCC", "CCC" } }))
+                    STRUCTURE_SHAPE)
                 .addElement(
                     'C',
                     buildHatchAdder(MTEHostedMachineController.class)
                         .atLeast(
-                            InputHatch,
-                            OutputHatch,
-                            InputBus,
-                            OutputBus,
+                            InputHatch.or(InputBus),
+                            OutputHatch.or(OutputBus),
                             Maintenance,
                             Energy.or(ExoticEnergy)
                                 .or(Dynamo)
                                 .or(ExoticDynamo))
                         .casingIndex(Casings.ZPMMachineCasing.textureId)
                         .hint(1)
-                        .buildAndChain(onElementPass(machine -> ++machine.casingCount, Casings.ZPMMachineCasing.asElement())))
+                        .buildAndChain(
+                            onElementPass(
+                                machine -> ++machine.casingCount,
+                                ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING))))
+                .addElement('P', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING))
+                .addElement('L', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.FLOW_LIGHT))
+                .addElement('R', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.RECEIVER))
+                .addElement('F', Casings.SuperplasticizerTreatedHighStrengthConcrete.asElement())
                 .build();
         }
         return structureDefinition;
@@ -118,7 +125,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     public void checkMachine(IGregTechTileEntity tileEntity, ItemStack stack, List<StructureError> errors) {
         casingCount = 0;
         if (!checkPiece(STRUCTURE_PIECE, OFFSET_X, OFFSET_Y, OFFSET_Z, errors)) return;
-        checkCasingMin(errors, casingCount, 16);
+        checkCasingMin(errors, casingCount, MINIMUM_CASINGS);
         checkHasAnyInput(errors);
         checkHasAnyOutput(errors);
         checkOneMaintenanceHatch(errors);
@@ -426,9 +433,14 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.link_2"))
             .addInfo(tr("matterblueprints.host.tooltip.link_3"))
             .addInfo(tr("matterblueprints.host.tooltip.link_4"))
-            .beginStructureBlock(3, 3, 3, true)
+            .beginStructureBlock(9, 7, 6, true)
             .addController(tr("matterblueprints.host.tooltip.controller"))
-            .addCasing("16+", tr("matterblueprints.host.tooltip.casing"), false)
+            .addCasing(MINIMUM_CASINGS + "+", tr("matterblueprints.host.tooltip.casing"), false)
+            .addOtherStructurePart(tr("matterblueprints.host.tooltip.floor"), tr("matterblueprints.host.tooltip.floor_position"))
+            .addOtherStructurePart(tr("matterblueprints.host.tooltip.light"), tr("matterblueprints.host.tooltip.light_position"))
+            .addOtherStructurePart(
+                tr("matterblueprints.host.tooltip.receiver"),
+                tr("matterblueprints.host.tooltip.receiver_position"))
             .addMaintenanceHatch(
                 tr("matterblueprints.host.tooltip.maintenance_count"),
                 tr("matterblueprints.host.tooltip.any_casing"),
@@ -471,7 +483,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
 
     @Override
     public ITexture getCasingTexture() {
-        return Casings.ZPMMachineCasing.getCasingTexture();
+        return TextureFactory.of(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING);
     }
 
     @Override
