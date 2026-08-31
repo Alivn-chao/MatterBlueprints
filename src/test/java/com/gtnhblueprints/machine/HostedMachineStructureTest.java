@@ -9,10 +9,10 @@ class HostedMachineStructureTest {
     @Test
     void machineRoomShapeHasExpectedDimensionsAndParts() {
         String[][] layers = HostedMachineStructure.LAYERS;
-        assertEquals(6, layers.length);
+        assertEquals(HostedMachineStructure.HEIGHT, layers.length);
         for (String[] layer : layers) {
-            assertEquals(7, layer.length);
-            for (String row : layer) assertEquals(9, row.length());
+            assertEquals(HostedMachineStructure.DEPTH, layer.length);
+            for (String row : layer) assertEquals(HostedMachineStructure.WIDTH, row.length());
         }
 
         assertEquals(63, count(layers, 'F'));
@@ -21,8 +21,12 @@ class HostedMachineStructureTest {
         assertEquals(36, count(layers, 'L'));
         assertEquals(1, count(layers, 'R'));
         assertEquals(1, count(layers, '~'));
-        assertEquals('~', layers[1][0].charAt(4));
-        assertEquals('R', layers[5][3].charAt(4));
+        assertEquals(
+            '~',
+            layers[HostedMachineStructure.CONTROLLER_Y][HostedMachineStructure.CONTROLLER_Z]
+                .charAt(HostedMachineStructure.CONTROLLER_X));
+        assertEquals('R', layers[0][3].charAt(4));
+        assertEquals('F', layers[HostedMachineStructure.HEIGHT - 1][0].charAt(0));
     }
 
     private static int count(String[][] layers, char expected) {

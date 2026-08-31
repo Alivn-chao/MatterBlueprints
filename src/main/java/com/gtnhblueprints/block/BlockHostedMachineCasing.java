@@ -20,8 +20,16 @@ public final class BlockHostedMachineCasing extends Block {
     public static final int FLOW_LIGHT = 1;
     public static final int RECEIVER = 2;
 
+    private static final int CONNECTED_TEXTURE_COUNT = 16;
+    private static final int EDGE_TOP = 1;
+    private static final int EDGE_RIGHT = 2;
+    private static final int EDGE_BOTTOM = 4;
+    private static final int EDGE_LEFT = 8;
+
     @SideOnly(Side.CLIENT)
     private IIcon[] icons;
+    @SideOnly(Side.CLIENT)
+    private IIcon[] connectedCasingIcons;
     @SideOnly(Side.CLIENT)
     private IIcon receiverTopIcon;
     @SideOnly(Side.CLIENT)
@@ -43,6 +51,10 @@ public final class BlockHostedMachineCasing extends Block {
             register.registerIcon("matterblueprints:host_casing"),
             register.registerIcon("matterblueprints:host_casing_light"),
             register.registerIcon("matterblueprints:host_receiver_top") };
+        connectedCasingIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
+        for (int mask = 0; mask < connectedCasingIcons.length; mask++) {
+            connectedCasingIcons[mask] = register.registerIcon("matterblueprints:host_casing_ctm_" + mask);
+        }
         receiverTopIcon = icons[RECEIVER];
         receiverSideIcon = register.registerIcon("matterblueprints:host_receiver_side");
         blockIcon = icons[CASING];
@@ -54,6 +66,14 @@ public final class BlockHostedMachineCasing extends Block {
         int normalizedMetadata = normalizeMetadata(metadata);
         if (normalizedMetadata == RECEIVER) return side == 0 || side == 1 ? receiverTopIcon : receiverSideIcon;
         return icons[normalizedMetadata];
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public IIcon getIcon(IBlockAccess world, int x, int y, int z, int side) {
+        int metadata = normalizeMetadata(world.getBlockMetadata(x, y, z));
+        if (metadata != CASING) return getIcon(side, metadata);
+        return connectedCasingIcons[getConnectionMask(world, x, y, z, side)];
     }
 
     @Override
@@ -77,5 +97,30 @@ public final class BlockHostedMachineCasing extends Block {
 
     private static int normalizeMetadata(int metadata) {
         return metadata >= CASING && metadata <= RECEIVER ? metadata : CASING;
+    }
+
+    private int getConnectionMask(IBlockAccess world, int x, int y, int z, int side) {
+        int mask = 0;
+        if (side == 0 || side == 1) {
+            if (connects(world, x, y, z - 1)) mask |= EDGE_TOP;
+            if (connects(world, x + 1, y, z)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y, z + 1)) mask |= EDGE_BOTTOM;
+            if (connects(world, x - 1, y, z)) mask |= EDGE_LEFT;
+        } else if (side == 2 || side == 3) {
+            if (connects(world, x, y + 1, z)) mask |= EDGE_TOP;
+            if (connects(world, x + 1, y, z)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y - 1, z)) mask |= EDGE_BOTTOM;
+            if (connects(world, x - 1, y, z)) mask |= EDGE_LEFT;
+        } else {
+            if (connects(world, x, y + 1, z)) mask |= EDGE_TOP;
+            if (connects(world, x, y, z + 1)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y - 1, z)) mask |= EDGE_BOTTOM;
+            if (connects(world, x, y, z - 1)) mask |= EDGE_LEFT;
+        }
+        return mask;
+    }
+
+    private boolean connects(IBlockAccess world, int x, int y, int z) {
+        return world.getBlock(x, y, z) == this && normalizeMetadata(world.getBlockMetadata(x, y, z)) == CASING;
     }
 }

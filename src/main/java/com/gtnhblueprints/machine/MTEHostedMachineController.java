@@ -64,9 +64,9 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     implements ISurvivalConstructable, ICasingTextureProvider {
 
     private static final String STRUCTURE_PIECE = "main";
-    private static final int OFFSET_X = 4;
-    private static final int OFFSET_Y = 1;
-    private static final int OFFSET_Z = 0;
+    private static final int OFFSET_X = HostedMachineStructure.CONTROLLER_X;
+    private static final int OFFSET_Y = HostedMachineStructure.CONTROLLER_Y;
+    private static final int OFFSET_Z = HostedMachineStructure.CONTROLLER_Z;
     private static final int MINIMUM_CASINGS = 32;
     private static final String[][] STRUCTURE_SHAPE = transpose(HostedMachineStructure.LAYERS);
     private static IStructureDefinition<MTEHostedMachineController> structureDefinition;
@@ -433,7 +433,11 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.link_2"))
             .addInfo(tr("matterblueprints.host.tooltip.link_3"))
             .addInfo(tr("matterblueprints.host.tooltip.link_4"))
-            .beginStructureBlock(9, 7, 6, true)
+            .beginStructureBlock(
+                HostedMachineStructure.WIDTH,
+                HostedMachineStructure.DEPTH,
+                HostedMachineStructure.HEIGHT,
+                true)
             .addController(tr("matterblueprints.host.tooltip.controller"))
             .addCasing(MINIMUM_CASINGS + "+", tr("matterblueprints.host.tooltip.casing"), false)
             .addOtherStructurePart(tr("matterblueprints.host.tooltip.floor"), tr("matterblueprints.host.tooltip.floor_position"))
