@@ -8,60 +8,71 @@ $edgeTop = 1
 $edgeRight = 2
 $edgeBottom = 4
 $edgeLeft = 8
-$borderWidth = 2
 
 function Write-ConnectedVariants {
     param(
         [string]$InputName,
-        [string]$OutputSuffix,
+        [string]$OutputPrefix,
+        [int]$BorderWidth,
+        [ValidateSet('Solid', 'Extend')]
+        [string]$JoinMode,
         [bool]$UseTransparentJoin
     )
 
     $inputPath = Join-Path $TextureDirectory $InputName
     $source = [System.Drawing.Bitmap]::FromFile((Resolve-Path $inputPath))
     try {
-        if ($source.Width -ne 16 -or $source.Height -ne 16) {
-            throw "$InputName must be a 16x16 texture"
-        }
-
-        $joinColor = if ($UseTransparentJoin) {
-            [System.Drawing.Color]::FromArgb(0, 0, 0, 0)
-        } else {
-            $source.GetPixel(4, 4)
+        if ($source.Width -ne 16 -or $source.Height % 16 -ne 0) {
+            throw "$InputName must be a 16-pixel-wide texture with 16x16 animation frames"
         }
 
         for ($mask = 0; $mask -lt 16; $mask++) {
-            $target = New-Object System.Drawing.Bitmap 16, 16, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $target = New-Object System.Drawing.Bitmap 16, $source.Height, (
+                [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
             try {
-                for ($y = 0; $y -lt 16; $y++) {
+                for ($y = 0; $y -lt $source.Height; $y++) {
+                    $frameY = $y % 16
+                    $frameOffset = $y - $frameY
                     for ($x = 0; $x -lt 16; $x++) {
-                        $onTop = $y -lt $borderWidth
-                        $onRight = $x -ge (16 - $borderWidth)
-                        $onBottom = $y -ge (16 - $borderWidth)
-                        $onLeft = $x -lt $borderWidth
+                        $onTop = $frameY -lt $BorderWidth
+                        $onRight = $x -ge (16 - $BorderWidth)
+                        $onBottom = $frameY -ge (16 - $BorderWidth)
+                        $onLeft = $x -lt $BorderWidth
+                        $openTop = $onTop -and ($mask -band $edgeTop) -eq 0
+                        $openRight = $onRight -and ($mask -band $edgeRight) -eq 0
+                        $openBottom = $onBottom -and ($mask -band $edgeBottom) -eq 0
+                        $openLeft = $onLeft -and ($mask -band $edgeLeft) -eq 0
+                        $openCount = @($openTop, $openRight, $openBottom, $openLeft).Where({ $_ }).Count
 
-                        $joinsConnectedEdge =
-                            (($mask -band $edgeTop) -ne 0 -and $onTop) -or
-                            (($mask -band $edgeRight) -ne 0 -and $onRight) -or
-                            (($mask -band $edgeBottom) -ne 0 -and $onBottom) -or
-                            (($mask -band $edgeLeft) -ne 0 -and $onLeft)
-                        $touchesOpenBoundary =
-                            (($mask -band $edgeTop) -eq 0 -and $onTop) -or
-                            (($mask -band $edgeRight) -eq 0 -and $onRight) -or
-                            (($mask -band $edgeBottom) -eq 0 -and $onBottom) -or
-                            (($mask -band $edgeLeft) -eq 0 -and $onLeft)
-
-                        $color = if ($joinsConnectedEdge -and -not $touchesOpenBoundary) {
-                            $joinColor
+                        if ($openCount -ge 2) {
+                            # A true outside corner keeps both exposed frame edges.
+                            $color = $source.GetPixel($x, $y)
+                        } elseif ($openTop -or $openBottom) {
+                            # Continue a horizontal outside frame through an internal tile seam.
+                            $color = $source.GetPixel(8, $y)
+                        } elseif ($openLeft -or $openRight) {
+                            # Continue a vertical outside frame through an internal tile seam.
+                            $color = $source.GetPixel($x, $frameOffset + 8)
+                        } elseif ($onTop -or $onRight -or $onBottom -or $onLeft) {
+                            if ($JoinMode -eq 'Extend') {
+                                $sourceX = [Math]::Min(15 - $BorderWidth, [Math]::Max($BorderWidth, $x))
+                                $sourceFrameY = [Math]::Min(
+                                    15 - $BorderWidth,
+                                    [Math]::Max($BorderWidth, $frameY))
+                                $color = $source.GetPixel($sourceX, $frameOffset + $sourceFrameY)
+                            } elseif ($UseTransparentJoin) {
+                                $color = [System.Drawing.Color]::FromArgb(0, 0, 0, 0)
+                            } else {
+                                $color = $source.GetPixel(4, $frameOffset + 4)
+                            }
                         } else {
-                            $source.GetPixel($x, $y)
+                            $color = $source.GetPixel($x, $y)
                         }
                         $target.SetPixel($x, $y, $color)
                     }
                 }
 
-                $outputName = "host_casing_ctm_${mask}${OutputSuffix}.png"
-                $outputPath = Join-Path $TextureDirectory $outputName
+                $outputPath = Join-Path $TextureDirectory "${OutputPrefix}_${mask}.png"
                 $target.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
             } finally {
                 $target.Dispose()
@@ -72,5 +83,18 @@ function Write-ConnectedVariants {
     }
 }
 
-Write-ConnectedVariants -InputName 'host_casing.png' -OutputSuffix '' -UseTransparentJoin $false
-Write-ConnectedVariants -InputName 'host_casing_emissive.png' -OutputSuffix '_emissive' -UseTransparentJoin $true
+Write-ConnectedVariants 'host_casing.png' 'host_casing_ctm' 2 'Solid' $false
+Write-ConnectedVariants 'host_casing_emissive.png' 'host_casing_ctm_emissive' 2 'Solid' $true
+Write-ConnectedVariants 'host_casing_light.png' 'host_casing_light_ctm' 3 'Extend' $false
+Write-ConnectedVariants 'host_casing_light_emissive.png' 'host_casing_light_ctm_emissive' 3 'Extend' $false
+
+for ($mask = 0; $mask -lt 16; $mask++) {
+    Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_ctm_emissive_${mask}.png") `
+        -Destination (Join-Path $TextureDirectory "host_casing_ctm_${mask}_emissive.png") -Force
+    Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_light_ctm_emissive_${mask}.png") `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}_emissive.png") -Force
+    Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light.png.mcmeta') `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}.png.mcmeta") -Force
+    Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light_emissive.png.mcmeta') `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}_emissive.png.mcmeta") -Force
+}

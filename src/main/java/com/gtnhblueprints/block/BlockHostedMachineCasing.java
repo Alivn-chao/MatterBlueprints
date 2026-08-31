@@ -31,6 +31,8 @@ public final class BlockHostedMachineCasing extends Block {
     @SideOnly(Side.CLIENT)
     private IIcon[] connectedCasingIcons;
     @SideOnly(Side.CLIENT)
+    private IIcon[] connectedLightIcons;
+    @SideOnly(Side.CLIENT)
     private IIcon receiverTopIcon;
     @SideOnly(Side.CLIENT)
     private IIcon receiverSideIcon;
@@ -55,6 +57,10 @@ public final class BlockHostedMachineCasing extends Block {
         for (int mask = 0; mask < connectedCasingIcons.length; mask++) {
             connectedCasingIcons[mask] = register.registerIcon("matterblueprints:host_casing_ctm_" + mask);
         }
+        connectedLightIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
+        for (int mask = 0; mask < connectedLightIcons.length; mask++) {
+            connectedLightIcons[mask] = register.registerIcon("matterblueprints:host_casing_light_ctm_" + mask);
+        }
         receiverTopIcon = icons[RECEIVER];
         receiverSideIcon = register.registerIcon("matterblueprints:host_receiver_side");
         blockIcon = icons[CASING];
@@ -72,8 +78,11 @@ public final class BlockHostedMachineCasing extends Block {
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(IBlockAccess world, int x, int y, int z, int side) {
         int metadata = normalizeMetadata(world.getBlockMetadata(x, y, z));
-        if (metadata != CASING) return getIcon(side, metadata);
-        return connectedCasingIcons[getConnectionMask(world, x, y, z, side)];
+        if (metadata == CASING) return connectedCasingIcons[getConnectionMask(world, x, y, z, side, CASING)];
+        if (metadata == FLOW_LIGHT) {
+            return connectedLightIcons[getConnectionMask(world, x, y, z, side, FLOW_LIGHT)];
+        }
+        return getIcon(side, metadata);
     }
 
     @Override
@@ -99,28 +108,28 @@ public final class BlockHostedMachineCasing extends Block {
         return metadata >= CASING && metadata <= RECEIVER ? metadata : CASING;
     }
 
-    private int getConnectionMask(IBlockAccess world, int x, int y, int z, int side) {
+    private int getConnectionMask(IBlockAccess world, int x, int y, int z, int side, int metadata) {
         int mask = 0;
         if (side == 0 || side == 1) {
-            if (connects(world, x, y, z - 1)) mask |= EDGE_TOP;
-            if (connects(world, x + 1, y, z)) mask |= EDGE_RIGHT;
-            if (connects(world, x, y, z + 1)) mask |= EDGE_BOTTOM;
-            if (connects(world, x - 1, y, z)) mask |= EDGE_LEFT;
+            if (connects(world, x, y, z - 1, metadata)) mask |= EDGE_TOP;
+            if (connects(world, x + 1, y, z, metadata)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y, z + 1, metadata)) mask |= EDGE_BOTTOM;
+            if (connects(world, x - 1, y, z, metadata)) mask |= EDGE_LEFT;
         } else if (side == 2 || side == 3) {
-            if (connects(world, x, y + 1, z)) mask |= EDGE_TOP;
-            if (connects(world, x + 1, y, z)) mask |= EDGE_RIGHT;
-            if (connects(world, x, y - 1, z)) mask |= EDGE_BOTTOM;
-            if (connects(world, x - 1, y, z)) mask |= EDGE_LEFT;
+            if (connects(world, x, y + 1, z, metadata)) mask |= EDGE_TOP;
+            if (connects(world, x + 1, y, z, metadata)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y - 1, z, metadata)) mask |= EDGE_BOTTOM;
+            if (connects(world, x - 1, y, z, metadata)) mask |= EDGE_LEFT;
         } else {
-            if (connects(world, x, y + 1, z)) mask |= EDGE_TOP;
-            if (connects(world, x, y, z + 1)) mask |= EDGE_RIGHT;
-            if (connects(world, x, y - 1, z)) mask |= EDGE_BOTTOM;
-            if (connects(world, x, y, z - 1)) mask |= EDGE_LEFT;
+            if (connects(world, x, y + 1, z, metadata)) mask |= EDGE_TOP;
+            if (connects(world, x, y, z + 1, metadata)) mask |= EDGE_RIGHT;
+            if (connects(world, x, y - 1, z, metadata)) mask |= EDGE_BOTTOM;
+            if (connects(world, x, y, z - 1, metadata)) mask |= EDGE_LEFT;
         }
         return mask;
     }
 
-    private boolean connects(IBlockAccess world, int x, int y, int z) {
-        return world.getBlock(x, y, z) == this && normalizeMetadata(world.getBlockMetadata(x, y, z)) == CASING;
+    private boolean connects(IBlockAccess world, int x, int y, int z, int metadata) {
+        return world.getBlock(x, y, z) == this && normalizeMetadata(world.getBlockMetadata(x, y, z)) == metadata;
     }
 }
