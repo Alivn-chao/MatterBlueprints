@@ -89,7 +89,10 @@ def controller_texture() -> Image.Image:
 
 def front_texture(code: str, x: int, y: int) -> Image.Image:
     if code == "L":
-        return texture("host_casing_light.png")
+        row = LAYERS[y][4]
+        vertical = (y > 0 and LAYERS[y - 1][4][x] == "L") or (y < 4 and LAYERS[y + 1][4][x] == "L")
+        horizontal = (x > 0 and row[x - 1] == "L") or (x < 16 and row[x + 1] == "L")
+        return texture("host_casing_light_vertical.png" if vertical and not horizontal else "host_casing_light.png")
     if code == "V":
         return texture("host_cooling_fan.png")
     if code == "~":

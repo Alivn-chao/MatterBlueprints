@@ -87,14 +87,22 @@ Write-ConnectedVariants 'host_casing.png' 'host_casing_ctm' 2 'Solid' $false
 Write-ConnectedVariants 'host_casing_emissive.png' 'host_casing_ctm_emissive' 2 'Solid' $true
 Write-ConnectedVariants 'host_casing_light.png' 'host_casing_light_ctm' 3 'Extend' $false
 Write-ConnectedVariants 'host_casing_light_emissive.png' 'host_casing_light_ctm_emissive' 3 'Extend' $false
+Write-ConnectedVariants 'host_casing_light_vertical.png' 'host_casing_light_vertical_ctm' 3 'Extend' $false
+Write-ConnectedVariants 'host_casing_light_vertical_emissive.png' 'host_casing_light_vertical_ctm_emissive' 3 'Extend' $false
 
 for ($mask = 0; $mask -lt 16; $mask++) {
     Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_ctm_emissive_${mask}.png") `
         -Destination (Join-Path $TextureDirectory "host_casing_ctm_${mask}_emissive.png") -Force
     Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_light_ctm_emissive_${mask}.png") `
         -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}_emissive.png") -Force
+    Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_light_vertical_ctm_emissive_${mask}.png") `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_vertical_ctm_${mask}_emissive.png") -Force
     Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light.png.mcmeta') `
         -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}.png.mcmeta") -Force
     Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light_emissive.png.mcmeta') `
         -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}_emissive.png.mcmeta") -Force
+    Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light_vertical.png.mcmeta') `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_vertical_ctm_${mask}.png.mcmeta") -Force
+    Copy-Item -LiteralPath (Join-Path $TextureDirectory 'host_casing_light_vertical_emissive.png.mcmeta') `
+        -Destination (Join-Path $TextureDirectory "host_casing_light_vertical_ctm_${mask}_emissive.png.mcmeta") -Force
 }

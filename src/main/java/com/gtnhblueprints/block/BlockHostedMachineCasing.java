@@ -34,6 +34,8 @@ public final class BlockHostedMachineCasing extends Block {
     @SideOnly(Side.CLIENT)
     private IIcon[] connectedLightIcons;
     @SideOnly(Side.CLIENT)
+    private IIcon[] connectedVerticalLightIcons;
+    @SideOnly(Side.CLIENT)
     private IIcon receiverTopIcon;
     @SideOnly(Side.CLIENT)
     private IIcon receiverSideIcon;
@@ -63,6 +65,11 @@ public final class BlockHostedMachineCasing extends Block {
         for (int mask = 0; mask < connectedLightIcons.length; mask++) {
             connectedLightIcons[mask] = register.registerIcon("matterblueprints:host_casing_light_ctm_" + mask);
         }
+        connectedVerticalLightIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
+        for (int mask = 0; mask < connectedVerticalLightIcons.length; mask++) {
+            connectedVerticalLightIcons[mask] = register
+                .registerIcon("matterblueprints:host_casing_light_vertical_ctm_" + mask);
+        }
         receiverTopIcon = icons[RECEIVER];
         receiverSideIcon = register.registerIcon("matterblueprints:host_receiver_side");
         blockIcon = icons[CASING];
@@ -82,7 +89,8 @@ public final class BlockHostedMachineCasing extends Block {
         int metadata = normalizeMetadata(world.getBlockMetadata(x, y, z));
         if (metadata == CASING) return connectedCasingIcons[getConnectionMask(world, x, y, z, side, CASING)];
         if (metadata == FLOW_LIGHT) {
-            return connectedLightIcons[getConnectionMask(world, x, y, z, side, FLOW_LIGHT)];
+            int mask = getConnectionMask(world, x, y, z, side, FLOW_LIGHT);
+            return prefersVerticalLight(mask) ? connectedVerticalLightIcons[mask] : connectedLightIcons[mask];
         }
         return getIcon(side, metadata);
     }
@@ -109,6 +117,12 @@ public final class BlockHostedMachineCasing extends Block {
 
     private static int normalizeMetadata(int metadata) {
         return metadata >= CASING && metadata <= COOLING_FAN ? metadata : CASING;
+    }
+
+    private static boolean prefersVerticalLight(int mask) {
+        boolean vertical = (mask & (EDGE_TOP | EDGE_BOTTOM)) != 0;
+        boolean horizontal = (mask & (EDGE_LEFT | EDGE_RIGHT)) != 0;
+        return vertical && !horizontal;
     }
 
     private int getConnectionMask(IBlockAccess world, int x, int y, int z, int side, int metadata) {

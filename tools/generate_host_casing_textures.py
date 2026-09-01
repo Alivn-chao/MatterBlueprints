@@ -96,6 +96,11 @@ def light_frame(frame: int, emissive: bool) -> Image.Image:
     return image
 
 
+def vertical_light_frame(frame: int, emissive: bool) -> Image.Image:
+    """The same data lanes rotated per 16x16 frame, not as one tall animation atlas."""
+    return light_frame(frame, emissive).transpose(Image.Transpose.ROTATE_90)
+
+
 def receiver_top(emissive: bool) -> Image.Image:
     image = empty() if emissive else casing_base()
     draw = ImageDraw.Draw(image)
@@ -208,6 +213,10 @@ def main() -> None:
         "host_casing_emissive.png": casing_emissive(),
         "host_casing_light.png": atlas([light_frame(frame, False) for frame in range(FRAME_COUNT)]),
         "host_casing_light_emissive.png": atlas([light_frame(frame, True) for frame in range(FRAME_COUNT)]),
+        "host_casing_light_vertical.png": atlas(
+            [vertical_light_frame(frame, False) for frame in range(FRAME_COUNT)]),
+        "host_casing_light_vertical_emissive.png": atlas(
+            [vertical_light_frame(frame, True) for frame in range(FRAME_COUNT)]),
         "host_receiver_top.png": receiver_top(False),
         "host_receiver_top_emissive.png": receiver_top(True),
         "host_receiver_side.png": receiver_side(False),
