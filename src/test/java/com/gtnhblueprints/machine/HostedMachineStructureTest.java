@@ -24,6 +24,7 @@ class HostedMachineStructureTest {
             '~',
             layers[HostedMachineStructure.CONTROLLER_Y][HostedMachineStructure.CONTROLLER_Z]
                 .charAt(HostedMachineStructure.CONTROLLER_X));
+        assertEquals(0, HostedMachineStructure.CONTROLLER_Z, "controller must face away from the machine room");
         assertEquals('L', layers[0][0].charAt(0));
         assertEquals('L', layers[HostedMachineStructure.HEIGHT - 1][0].charAt(0));
     }

@@ -15,7 +15,7 @@ def empty() -> Image.Image:
 
 
 def casing_base() -> Image.Image:
-    """Dense graphite machine-room panel with a GT-style stepped bevel."""
+    """Continuous graphite machine-room wall plate with a GT-style stepped bevel."""
     image = Image.new("RGBA", (16, 16), (31, 36, 43, 255))
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 15, 15), fill=(24, 28, 34, 255))
@@ -29,31 +29,33 @@ def casing_base() -> Image.Image:
     draw.line((1, 14, 14, 14), fill=(18, 22, 28, 255))
     draw.line((14, 2, 14, 14), fill=(23, 28, 35, 255))
 
-    # Four recessed service panels; asymmetric highlights keep the face from
-    # looking flat when tiled across a large machine-room wall.
-    for left, top in ((2, 2), (8, 2), (2, 8), (8, 8)):
-        draw.rectangle((left, top, left + 5, top + 5), fill=(29, 34, 41, 255))
-        draw.line((left, top, left + 5, top), fill=(59, 68, 79, 255))
-        draw.line((left, top, left, top + 5), fill=(52, 61, 72, 255))
-        draw.line((left, top + 5, left + 5, top + 5), fill=(17, 21, 27, 255))
-        draw.line((left + 5, top + 1, left + 5, top + 5), fill=(20, 25, 31, 255))
-        draw.rectangle((left + 1, top + 1, left + 4, top + 4), fill=(35, 41, 49, 255))
-        draw.point((left + 1, top + 1), fill=(73, 83, 96, 255))
-        draw.point((left + 4, top + 4), fill=(18, 23, 29, 255))
+    # One broad armour plate reads as a machine-room wall instead of four
+    # repeated drawers. The center is slightly crowned and the lower seam is
+    # recessed so connected tiles form a continuous panelled facade.
+    draw.rectangle((2, 3, 13, 12), fill=(32, 38, 46, 255))
+    draw.line((2, 3, 13, 3), fill=(61, 71, 84, 255))
+    draw.line((2, 3, 2, 12), fill=(53, 63, 75, 255))
+    draw.line((2, 12, 13, 12), fill=(16, 20, 26, 255))
+    draw.line((13, 4, 13, 12), fill=(20, 25, 32, 255))
+    draw.rectangle((4, 5, 11, 10), fill=(37, 44, 53, 255))
+    draw.line((4, 5, 11, 5), fill=(49, 58, 70, 255))
+    draw.line((4, 10, 11, 10), fill=(24, 29, 36, 255))
+    draw.line((3, 7, 12, 7), fill=(43, 51, 62, 255))
+    draw.line((3, 8, 12, 8), fill=(25, 31, 39, 255))
 
-    # Bolts and thin ZPM-blue status accents.
+    # Corner fasteners and a narrow data-room status slit.
     for point in ((1, 1), (14, 1), (1, 14), (14, 14)):
         draw.point(point, fill=(126, 136, 148, 255))
-    draw.line((4, 7, 6, 7), fill=(34, 135, 161, 255))
-    draw.line((10, 7, 12, 7), fill=(44, 154, 181, 255))
+    draw.line((5, 8, 10, 8), fill=(35, 137, 165, 255))
+    draw.point((10, 8), fill=(100, 66, 190, 255))
     return image
 
 
 def casing_emissive() -> Image.Image:
     image = empty()
     draw = ImageDraw.Draw(image)
-    draw.line((4, 7, 6, 7), fill=(47, 203, 233, 255))
-    draw.line((10, 7, 12, 7), fill=(61, 220, 244, 255))
+    draw.line((5, 8, 9, 8), fill=(47, 203, 233, 255))
+    draw.point((10, 8), fill=(177, 112, 255, 255))
     return image
 
 
@@ -139,7 +141,7 @@ def receiver_side(emissive: bool) -> Image.Image:
 
 
 def cooling_fan(emissive: bool) -> Image.Image:
-    """Recessed server-rack fan using the same graphite, cyan and violet language as the host casing."""
+    """Four-blade rack fan matching the reference composition in the host palette."""
     image = empty() if emissive else casing_base()
     draw = ImageDraw.Draw(image)
     if not emissive:
@@ -148,23 +150,41 @@ def cooling_fan(emissive: bool) -> Image.Image:
         draw.line((2, 2, 2, 13), fill=(62, 73, 87, 255))
         draw.line((2, 13, 13, 13), fill=(7, 10, 14, 255))
         draw.line((13, 3, 13, 13), fill=(9, 13, 18, 255))
-        draw.rectangle((4, 4, 11, 11), fill=(25, 31, 39, 255))
-        # Four stepped blades read cleanly at 16x16 without becoming a flat cross.
-        draw.polygon(((7, 4), (9, 4), (9, 7), (8, 8), (7, 7)), fill=(57, 66, 78, 255))
-        draw.polygon(((9, 7), (11, 7), (11, 9), (8, 9), (7, 8)), fill=(48, 57, 69, 255))
-        draw.polygon(((7, 9), (8, 8), (9, 9), (9, 11), (7, 11)), fill=(39, 47, 58, 255))
-        draw.polygon(((4, 7), (7, 7), (8, 8), (7, 9), (4, 9)), fill=(46, 55, 67, 255))
+        # Blue-black square duct, then four broad hooked blades arranged around
+        # the same large square hub seen on the reference input assembly.
+        draw.rectangle((3, 3, 12, 12), fill=(15, 35, 61, 255))
+        draw.line((3, 3, 12, 3), fill=(29, 75, 108, 255))
+        draw.line((3, 3, 3, 12), fill=(24, 62, 91, 255))
+        draw.line((3, 12, 12, 12), fill=(6, 13, 23, 255))
+        draw.line((12, 4, 12, 12), fill=(8, 19, 31, 255))
+
+        # Four broad blades around a large square hub, matching the reference
+        # fan silhouette. Cyan is the lit face and violet the shaded edge.
+        blade_dark = (42, 51, 65, 255)
+        blade_cyan = (38, 151, 180, 255)
+        blade_violet = (91, 57, 169, 255)
+        draw.polygon(((5, 3), (10, 3), (9, 6), (6, 6)), fill=blade_cyan)
+        draw.polygon(((9, 5), (12, 6), (12, 10), (9, 9)), fill=blade_violet)
+        draw.polygon(((6, 9), (9, 9), (10, 12), (5, 12)), fill=blade_dark)
+        draw.polygon(((3, 5), (6, 6), (6, 9), (3, 10)), fill=(31, 109, 137, 255))
+        draw.line((5, 3, 10, 3), fill=(64, 190, 215, 255))
+        draw.line((12, 6, 12, 10), fill=(123, 76, 210, 255))
+        draw.rectangle((5, 5, 10, 10), fill=(26, 31, 40, 255))
+        draw.line((5, 5, 10, 5), fill=(76, 86, 100, 255))
+        draw.line((5, 10, 10, 10), fill=(10, 14, 20, 255))
+        draw.rectangle((6, 6, 9, 9), fill=(53, 60, 70, 255))
+        draw.line((6, 6, 9, 6), fill=(91, 101, 114, 255))
+        draw.rectangle((7, 7, 8, 8), fill=(105, 116, 130, 255))
+        draw.point((7, 7), fill=(168, 178, 190, 255))
         for point in ((3, 3), (12, 3), (3, 12), (12, 12)):
             draw.point(point, fill=(111, 123, 138, 255))
 
-    cyan = (67, 224, 248, 255)
-    violet = (154, 91, 247, 255)
-    highlight = (206, 252, 255, 255)
-    draw.rectangle((7, 7, 8, 8), fill=cyan)
-    draw.point((7, 7), fill=highlight)
-    draw.point((8, 8), fill=violet)
-    draw.point((4, 7), fill=cyan)
-    draw.point((11, 8), fill=violet)
+    cyan = (76, 229, 250, 255)
+    violet = (174, 103, 255, 255)
+    draw.line((5, 3, 9, 3), fill=cyan)
+    draw.line((12, 6, 12, 8), fill=violet)
+    draw.line((3, 6, 3, 8), fill=cyan)
+    draw.line((6, 12, 8, 12), fill=violet)
     return image
 
 

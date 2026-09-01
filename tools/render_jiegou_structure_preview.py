@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TEXTURES = ROOT / "src/main/resources/assets/matterblueprints/textures/blocks"
 OUTPUT = ROOT / "build/structure-preview/jiegou-hosted-machine.png"
 
-# Top to bottom, back to front. This is the exact 17x5x5 jiegou.gtbp substitution map.
+# Top to bottom, front to back. This is the exact 17x5x5 jiegou.gtbp substitution map,
+# mirrored in depth so the host controller faces out of the machine room.
 LAYERS = [
     [
         "LLLLLLLLLLLLLLLLL",
@@ -17,18 +18,18 @@ LAYERS = [
         "LLLLLLLLLLLLLLLLL",
     ],
     [
-        "LVVVVVVVVVVVVVVVL",
-        "H---------------H",
-        "H---------------H",
-        "H---------------H",
         "LVVVVVVVVVVVVHHHL",
+        "H---------------H",
+        "H---------------H",
+        "H---------------H",
+        "LVVVVVVVVVVVVVVVL",
     ],
     [
-        "LHHHHHHHHHHHHHHHL",
-        "H---------------H",
-        "H---------------H",
-        "H---------------H",
         "LHHHHHHHHHHHHH~HL",
+        "H---------------H",
+        "H---------------H",
+        "H---------------H",
+        "LHHHHHHHHHHHHHHHL",
     ],
     [
         "LHHHHHHHHHHHHHHHL",
@@ -89,8 +90,8 @@ def controller_texture() -> Image.Image:
 
 def front_texture(code: str, x: int, y: int) -> Image.Image:
     if code == "L":
-        row = LAYERS[y][4]
-        vertical = (y > 0 and LAYERS[y - 1][4][x] == "L") or (y < 4 and LAYERS[y + 1][4][x] == "L")
+        row = LAYERS[y][0]
+        vertical = (y > 0 and LAYERS[y - 1][0][x] == "L") or (y < 4 and LAYERS[y + 1][0][x] == "L")
         horizontal = (x > 0 and row[x - 1] == "L") or (x < 16 and row[x + 1] == "L")
         return texture("host_casing_light_vertical.png" if vertical and not horizontal else "host_casing_light.png")
     if code == "V":
@@ -105,7 +106,7 @@ def front_texture(code: str, x: int, y: int) -> Image.Image:
 def draw_front(draw: ImageDraw.ImageDraw, image: Image.Image, origin: tuple[int, int], cell: int) -> None:
     ox, oy = origin
     for y, layer in enumerate(LAYERS):
-        for x, code in enumerate(layer[4]):
+        for x, code in enumerate(layer[0]):
             tile = front_texture(code, x, y).resize((cell, cell), Image.Resampling.NEAREST)
             image.paste(tile, (ox + x * cell, oy + y * cell))
     draw.rectangle((ox - 2, oy - 2, ox + 17 * cell + 1, oy + 5 * cell + 1), outline=(94, 112, 131), width=2)

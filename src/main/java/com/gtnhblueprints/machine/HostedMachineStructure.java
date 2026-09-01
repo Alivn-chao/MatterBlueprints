@@ -7,7 +7,10 @@ final class HostedMachineStructure {
     static final int HEIGHT = 5;
     static final int CONTROLLER_X = 14;
     static final int CONTROLLER_Y = 2;
-    static final int CONTROLLER_Z = 4;
+    // The controller sits on the outward-facing depth plane. Keeping it at z=0
+    // makes StructureLib build the machine room behind the controller instead
+    // of placing the controller face toward the room interior.
+    static final int CONTROLLER_Z = 0;
 
     /**
      * Exact geometry captured in the local {@code jiegou.gtbp} reference. StructureLib consumes layers from top to
@@ -22,17 +25,17 @@ final class HostedMachineStructure {
             "LHHHHHHHHHHHHHHHL",
             "LLLLLLLLLLLLLLLLL" },
         {
-            "LVVVVVVVVVVVVVVVL",
+            "LVVVVVVVVVVVVHHHL",
             "H---------------H",
             "H---------------H",
             "H---------------H",
-            "LVVVVVVVVVVVVHHHL" },
+            "LVVVVVVVVVVVVVVVL" },
         {
-            "LHHHHHHHHHHHHHHHL",
+            "LHHHHHHHHHHHHH~HL",
             "H---------------H",
             "H---------------H",
             "H---------------H",
-            "LHHHHHHHHHHHHH~HL" },
+            "LHHHHHHHHHHHHHHHL" },
         {
             "LHHHHHHHHHHHHHHHL",
             "H---------------H",
