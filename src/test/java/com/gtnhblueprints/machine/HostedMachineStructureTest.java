@@ -15,18 +15,17 @@ class HostedMachineStructureTest {
             for (String row : layer) assertEquals(HostedMachineStructure.WIDTH, row.length());
         }
 
-        assertEquals(63, count(layers, 'F'));
-        assertEquals(71, count(layers, 'C'));
-        assertEquals(13, count(layers, 'P'));
-        assertEquals(36, count(layers, 'L'));
-        assertEquals(1, count(layers, 'R'));
+        assertEquals(137, count(layers, 'L'));
+        assertEquals(125, count(layers, 'H'));
+        assertEquals(27, count(layers, 'V'));
+        assertEquals(135, count(layers, '-'));
         assertEquals(1, count(layers, '~'));
         assertEquals(
             '~',
             layers[HostedMachineStructure.CONTROLLER_Y][HostedMachineStructure.CONTROLLER_Z]
                 .charAt(HostedMachineStructure.CONTROLLER_X));
-        assertEquals('R', layers[0][3].charAt(4));
-        assertEquals('F', layers[HostedMachineStructure.HEIGHT - 1][0].charAt(0));
+        assertEquals('L', layers[0][0].charAt(0));
+        assertEquals('L', layers[HostedMachineStructure.HEIGHT - 1][0].charAt(0));
     }
 
     private static int count(String[][] layers, char expected) {

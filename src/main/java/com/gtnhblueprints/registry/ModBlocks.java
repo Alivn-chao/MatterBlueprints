@@ -12,12 +12,16 @@ import com.gtnhblueprints.tile.TileBlueprintConfigurator;
 import cpw.mods.fml.common.registry.GameRegistry;
 import gregtech.api.casing.Casings;
 import gregtech.api.enums.ItemList;
+import gregtech.api.enums.Textures;
+import gregtech.api.interfaces.ITexture;
+import gregtech.api.render.TextureFactory;
 
 public final class ModBlocks {
 
     public static final int CONFIGURATOR_GUI_ID = 1;
     public static final BlockBlueprintConfigurator BLUEPRINT_CONFIGURATOR = new BlockBlueprintConfigurator();
     public static final BlockHostedMachineCasing HOSTED_MACHINE_CASING = new BlockHostedMachineCasing();
+    public static int HOSTED_HATCH_CASING_TEXTURE_ID = Casings.ZPMMachineCasing.textureId;
 
     private ModBlocks() {}
 
@@ -31,6 +35,7 @@ public final class ModBlocks {
     }
 
     public static void init() {
+        registerHostedHatchCasingTexture();
         GameRegistry.addRecipe(
             new ItemStack(BLUEPRINT_CONFIGURATOR),
             "IGI",
@@ -69,5 +74,32 @@ public final class ModBlocks {
             new ItemStack(HOSTED_MACHINE_CASING, 1, BlockHostedMachineCasing.CASING),
             'F',
             ItemList.Field_Generator_ZPM.get(1));
+        GameRegistry.addRecipe(
+            new ItemStack(HOSTED_MACHINE_CASING, 4, BlockHostedMachineCasing.COOLING_FAN),
+            "RMR",
+            "MCM",
+            "RMR",
+            'R',
+            Items.redstone,
+            'M',
+            ItemList.Electric_Motor_ZPM.get(1),
+            'C',
+            new ItemStack(HOSTED_MACHINE_CASING, 1, BlockHostedMachineCasing.CASING));
+    }
+
+    private static void registerHostedHatchCasingTexture() {
+        ITexture texture = TextureFactory.of(HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING);
+        ITexture[][] pages = Textures.BlockIcons.casingTexturePages;
+        for (int page = pages.length - 1; page >= 0; page--) {
+            ITexture[] entries = pages[page];
+            if (entries == null) continue;
+            for (int index = entries.length - 1; index >= 0; index--) {
+                if (entries[index] != null) continue;
+                HOSTED_HATCH_CASING_TEXTURE_ID = page << 7 | index;
+                Textures.BlockIcons.setCasingTextureForId(HOSTED_HATCH_CASING_TEXTURE_ID, texture);
+                return;
+            }
+        }
+        throw new IllegalStateException("No free GregTech casing texture slot for hosted machine hatches");
     }
 }

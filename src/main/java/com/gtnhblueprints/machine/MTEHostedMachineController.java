@@ -44,8 +44,6 @@ import com.gtnhblueprints.BlueprintConfig;
 import com.gtnhblueprints.block.BlockHostedMachineCasing;
 import com.gtnhblueprints.registry.ModBlocks;
 
-import gregtech.api.casing.Casings;
-import gregtech.api.enums.ItemList;
 import gregtech.api.enums.Textures;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
@@ -98,7 +96,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                     STRUCTURE_PIECE,
                     STRUCTURE_SHAPE)
                 .addElement(
-                    'C',
+                    'H',
                     buildHatchAdder(MTEHostedMachineController.class)
                         .atLeast(
                             InputHatch.or(InputBus),
@@ -107,16 +105,14 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                             Energy.or(ExoticEnergy)
                                 .or(Dynamo)
                                 .or(ExoticDynamo))
-                        .casingIndex(Casings.ZPMMachineCasing.textureId)
+                        .casingIndex(ModBlocks.HOSTED_HATCH_CASING_TEXTURE_ID)
                         .hint(1)
                         .buildAndChain(
                             onElementPass(
                                 machine -> ++machine.casingCount,
                                 ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING))))
-                .addElement('P', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING))
                 .addElement('L', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.FLOW_LIGHT))
-                .addElement('R', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.RECEIVER))
-                .addElement('F', ofBlock(ItemList.UltraHighStrengthConcrete.getBlock(), 9))
+                .addElement('V', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.COOLING_FAN))
                 .build();
         }
         return structureDefinition;
@@ -441,11 +437,10 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                 true)
             .addController(tr("matterblueprints.host.tooltip.controller"))
             .addCasing(MINIMUM_CASINGS + "+", tr("matterblueprints.host.tooltip.casing"), false)
-            .addOtherStructurePart(tr("matterblueprints.host.tooltip.floor"), tr("matterblueprints.host.tooltip.floor_position"))
             .addOtherStructurePart(tr("matterblueprints.host.tooltip.light"), tr("matterblueprints.host.tooltip.light_position"))
             .addOtherStructurePart(
-                tr("matterblueprints.host.tooltip.receiver"),
-                tr("matterblueprints.host.tooltip.receiver_position"))
+                tr("matterblueprints.host.tooltip.fan"),
+                tr("matterblueprints.host.tooltip.fan_position"))
             .addMaintenanceHatch(
                 tr("matterblueprints.host.tooltip.maintenance_count"),
                 tr("matterblueprints.host.tooltip.any_casing"),

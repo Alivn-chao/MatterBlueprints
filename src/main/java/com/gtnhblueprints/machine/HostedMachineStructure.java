@@ -2,65 +2,49 @@ package com.gtnhblueprints.machine;
 
 final class HostedMachineStructure {
 
-    static final int WIDTH = 9;
-    static final int DEPTH = 7;
-    static final int HEIGHT = 6;
-    static final int CONTROLLER_X = 4;
-    static final int CONTROLLER_Y = 4;
-    static final int CONTROLLER_Z = 0;
+    static final int WIDTH = 17;
+    static final int DEPTH = 5;
+    static final int HEIGHT = 5;
+    static final int CONTROLLER_X = 14;
+    static final int CONTROLLER_Y = 2;
+    static final int CONTROLLER_Z = 4;
 
     /**
-     * StructureLib consumes layers from top to bottom. Keep the receiver first and the concrete foundation last.
+     * Exact geometry captured in the local {@code jiegou.gtbp} reference. StructureLib consumes layers from top to
+     * bottom. L replaces the electronic-computer edge/foundation blocks, V replaces the heat vents and H replaces
+     * advanced-computer blocks, where machine hatches are allowed.
      */
     static final String[][] LAYERS = {
         {
-            "         ",
-            "         ",
-            "         ",
-            "    R    ",
-            "         ",
-            "         ",
-            "         " },
+            "LLLLLLLLLLLLLLLLL",
+            "LHHHHHHHHHHHHHHHL",
+            "LHHHHHHHHHHHHHHHL",
+            "LHHHHHHHHHHHHHHHL",
+            "LLLLLLLLLLLLLLLLL" },
         {
-            "LLLLLLLLL",
-            "L-------L",
-            "L--PPP--L",
-            "L--PPP--L",
-            "L--PPP--L",
-            "L-------L",
-            "LLLLLLLLL" },
+            "LVVVVVVVVVVVVVVVL",
+            "H---------------H",
+            "H---------------H",
+            "H---------------H",
+            "LVVVVVVVVVVVVHHHL" },
         {
-            "LCCCCCCCL",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "LCCCCCCCL" },
+            "LHHHHHHHHHHHHHHHL",
+            "H---------------H",
+            "H---------------H",
+            "H---------------H",
+            "LHHHHHHHHHHHHH~HL" },
         {
-            "LCCCCCCCL",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "LCCCCCCCL" },
+            "LHHHHHHHHHHHHHHHL",
+            "H---------------H",
+            "H---------------H",
+            "H---------------H",
+            "LHHHHHHHHHHHHHHHL" },
         {
-            "PCCC~CCCP",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "C-------C",
-            "PCCCCCCCP" },
-        {
-            "FFFFFFFFF",
-            "FFFFFFFFF",
-            "FFFFFFFFF",
-            "FFFFFFFFF",
-            "FFFFFFFFF",
-            "FFFFFFFFF",
-            "FFFFFFFFF" } };
+            "LLLLLLLLLLLLLLLLL",
+            "LLLLLLLLLLLLLLLLL",
+            "LLLLLLLLLLLLLLLLL",
+            "LLLLLLLLLLLLLLLLL",
+            "LLLLLLLLLLLLLLLLL" } };
 
     private HostedMachineStructure() {}
 }

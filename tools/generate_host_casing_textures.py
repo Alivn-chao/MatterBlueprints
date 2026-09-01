@@ -133,6 +133,36 @@ def receiver_side(emissive: bool) -> Image.Image:
     return image
 
 
+def cooling_fan(emissive: bool) -> Image.Image:
+    """Recessed server-rack fan using the same graphite, cyan and violet language as the host casing."""
+    image = empty() if emissive else casing_base()
+    draw = ImageDraw.Draw(image)
+    if not emissive:
+        draw.rectangle((2, 2, 13, 13), fill=(14, 18, 24, 255))
+        draw.line((2, 2, 13, 2), fill=(76, 87, 101, 255))
+        draw.line((2, 2, 2, 13), fill=(62, 73, 87, 255))
+        draw.line((2, 13, 13, 13), fill=(7, 10, 14, 255))
+        draw.line((13, 3, 13, 13), fill=(9, 13, 18, 255))
+        draw.rectangle((4, 4, 11, 11), fill=(25, 31, 39, 255))
+        # Four stepped blades read cleanly at 16x16 without becoming a flat cross.
+        draw.polygon(((7, 4), (9, 4), (9, 7), (8, 8), (7, 7)), fill=(57, 66, 78, 255))
+        draw.polygon(((9, 7), (11, 7), (11, 9), (8, 9), (7, 8)), fill=(48, 57, 69, 255))
+        draw.polygon(((7, 9), (8, 8), (9, 9), (9, 11), (7, 11)), fill=(39, 47, 58, 255))
+        draw.polygon(((4, 7), (7, 7), (8, 8), (7, 9), (4, 9)), fill=(46, 55, 67, 255))
+        for point in ((3, 3), (12, 3), (3, 12), (12, 12)):
+            draw.point(point, fill=(111, 123, 138, 255))
+
+    cyan = (67, 224, 248, 255)
+    violet = (154, 91, 247, 255)
+    highlight = (206, 252, 255, 255)
+    draw.rectangle((7, 7, 8, 8), fill=cyan)
+    draw.point((7, 7), fill=highlight)
+    draw.point((8, 8), fill=violet)
+    draw.point((4, 7), fill=cyan)
+    draw.point((11, 8), fill=violet)
+    return image
+
+
 def atlas(frames: list[Image.Image]) -> Image.Image:
     image = Image.new("RGBA", (16, 16 * len(frames)), (0, 0, 0, 0))
     for index, frame in enumerate(frames):
@@ -145,8 +175,8 @@ def write_preview(textures: dict[str, Image.Image]) -> None:
     labels = [
         ("Casing", textures["host_casing.png"]),
         ("Flow light", textures["host_casing_light.png"].crop((0, 0, 16, 16))),
+        ("Cooling fan", textures["host_cooling_fan.png"]),
         ("Receiver top", textures["host_receiver_top.png"]),
-        ("Receiver side", textures["host_receiver_side.png"]),
     ]
     preview = Image.new("RGB", (4 * 160, 196), (18, 21, 27))
     for index, (_, texture) in enumerate(labels):
@@ -182,6 +212,8 @@ def main() -> None:
         "host_receiver_top_emissive.png": receiver_top(True),
         "host_receiver_side.png": receiver_side(False),
         "host_receiver_side_emissive.png": receiver_side(True),
+        "host_cooling_fan.png": cooling_fan(False),
+        "host_cooling_fan_emissive.png": cooling_fan(True),
     }
     for filename, image in textures.items():
         if image.width != 16 or image.height not in (16, 16 * FRAME_COUNT):

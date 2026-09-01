@@ -8,7 +8,7 @@ import com.gtnhblueprints.block.BlockHostedMachineCasing;
 
 public final class ItemBlockHostedMachineCasing extends ItemBlock {
 
-    private static final String[] NAMES = { "casing", "light", "receiver" };
+    private static final String[] NAMES = { "casing", "light", "receiver", "fan" };
 
     public ItemBlockHostedMachineCasing(Block block) {
         super(block);
@@ -24,7 +24,7 @@ public final class ItemBlockHostedMachineCasing extends ItemBlock {
     @Override
     public String getUnlocalizedName(ItemStack stack) {
         int metadata = stack.getItemDamage();
-        if (metadata < BlockHostedMachineCasing.CASING || metadata > BlockHostedMachineCasing.RECEIVER) {
+        if (metadata < BlockHostedMachineCasing.CASING || metadata > BlockHostedMachineCasing.COOLING_FAN) {
             metadata = BlockHostedMachineCasing.CASING;
         }
         return super.getUnlocalizedName() + "." + NAMES[metadata];

@@ -19,6 +19,7 @@ public final class BlockHostedMachineCasing extends Block {
     public static final int CASING = 0;
     public static final int FLOW_LIGHT = 1;
     public static final int RECEIVER = 2;
+    public static final int COOLING_FAN = 3;
 
     private static final int CONNECTED_TEXTURE_COUNT = 16;
     private static final int EDGE_TOP = 1;
@@ -52,7 +53,8 @@ public final class BlockHostedMachineCasing extends Block {
         icons = new IIcon[] {
             register.registerIcon("matterblueprints:host_casing"),
             register.registerIcon("matterblueprints:host_casing_light"),
-            register.registerIcon("matterblueprints:host_receiver_top") };
+            register.registerIcon("matterblueprints:host_receiver_top"),
+            register.registerIcon("matterblueprints:host_cooling_fan") };
         connectedCasingIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
         for (int mask = 0; mask < connectedCasingIcons.length; mask++) {
             connectedCasingIcons[mask] = register.registerIcon("matterblueprints:host_casing_ctm_" + mask);
@@ -93,7 +95,7 @@ public final class BlockHostedMachineCasing extends Block {
     @Override
     public int getLightValue(IBlockAccess world, int x, int y, int z) {
         int metadata = normalizeMetadata(world.getBlockMetadata(x, y, z));
-        return metadata == FLOW_LIGHT ? 10 : metadata == RECEIVER ? 12 : 0;
+        return metadata == FLOW_LIGHT ? 10 : metadata == RECEIVER ? 12 : metadata == COOLING_FAN ? 4 : 0;
     }
 
     @Override
@@ -102,10 +104,11 @@ public final class BlockHostedMachineCasing extends Block {
         list.add(new ItemStack(item, 1, CASING));
         list.add(new ItemStack(item, 1, FLOW_LIGHT));
         list.add(new ItemStack(item, 1, RECEIVER));
+        list.add(new ItemStack(item, 1, COOLING_FAN));
     }
 
     private static int normalizeMetadata(int metadata) {
-        return metadata >= CASING && metadata <= RECEIVER ? metadata : CASING;
+        return metadata >= CASING && metadata <= COOLING_FAN ? metadata : CASING;
     }
 
     private int getConnectionMask(IBlockAccess world, int x, int y, int z, int side, int metadata) {
