@@ -6,7 +6,9 @@ import com.gtnhblueprints.machine.MTEHostedMachineController;
 
 import gregtech.api.GregTechAPI;
 import gregtech.api.enums.ItemList;
+import gregtech.api.enums.Materials;
 import gregtech.api.enums.MetaTileEntityIDs;
+import gregtech.api.enums.OrePrefixes;
 import gregtech.api.util.GTModHandler;
 
 public final class ModMachines {
@@ -57,6 +59,6 @@ public final class ModMachines {
                 'F',
                 ItemList.Field_Generator_ZPM.get(1),
                 'C',
-                ItemList.Circuit_Master.get(1) });
+                OrePrefixes.circuit.get(Materials.LuV) });
     }
 }

@@ -12,9 +12,12 @@ import com.gtnhblueprints.tile.TileBlueprintConfigurator;
 import cpw.mods.fml.common.registry.GameRegistry;
 import gregtech.api.casing.Casings;
 import gregtech.api.enums.ItemList;
+import gregtech.api.enums.Materials;
+import gregtech.api.enums.OrePrefixes;
 import gregtech.api.enums.Textures;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.render.TextureFactory;
+import gregtech.api.util.GTModHandler;
 
 public final class ModBlocks {
 
@@ -49,10 +52,9 @@ public final class ModBlocks {
             Items.redstone,
             'C',
             Blocks.crafting_table);
-        GameRegistry.addShapelessRecipe(
+        GTModHandler.addShapelessCraftingRecipe(
             new ItemStack(HOSTED_MACHINE_CASING, 1, BlockHostedMachineCasing.CASING),
-            Casings.ZPMMachineCasing.toStack(1),
-            ItemList.Circuit_Master.get(1));
+            new Object[] { Casings.ZPMMachineCasing.toStack(1), OrePrefixes.circuit.get(Materials.LuV) });
         GameRegistry.addShapelessRecipe(
             new ItemStack(HOSTED_MACHINE_CASING, 1, BlockHostedMachineCasing.FLOW_LIGHT),
             new ItemStack(HOSTED_MACHINE_CASING, 1, BlockHostedMachineCasing.CASING),
