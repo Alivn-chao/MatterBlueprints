@@ -367,7 +367,11 @@ final class HostedMachineCoordinator {
     }
 
     private boolean isUsable(MTEMultiBlockBase remote) {
-        return remote != null && remote.isValid() && remote.mMachine && remote.getBaseMetaTileEntity() != null;
+        return remote != null && remote.isValid()
+            && remote.mMachine
+            && remote.getBaseMetaTileEntity() != null
+            && (!HostedSpaceAssemblerSupport.isSpaceAssembler(remote)
+                || HostedSpaceAssemblerSupport.isConnected(remote));
     }
 
     private MTEMultiBlockBase chooseRepresentative() {
@@ -408,6 +412,9 @@ final class HostedMachineCoordinator {
         ItemStack remoteController = remote.getStackForm(1);
         if (remoteController == null || !selector.isItemEqual(remoteController)) return false;
         if (isSupportedGenerator(remote)) return getDynamoCapacity(remote) > 0;
+        if (HostedSpaceAssemblerSupport.isSpaceAssembler(remote)) {
+            return HostedSpaceAssemblerSupport.isConnected(remote) && remote.getMaxInputVoltage() > 0;
+        }
         List<MTEHatch> energyHatches = remote.getExoticAndNormalEnergyHatchList();
         return !energyHatches.isEmpty() && ExoticEnergyInputHelper.getTotalEuMulti(energyHatches) > 0;
     }
@@ -1110,7 +1117,9 @@ final class HostedMachineCoordinator {
 
             int totalParallel = 0;
             for (MTEMultiBlockBase machine : machines) {
-                totalParallel = saturatingParallelAdd(totalParallel, Math.max(1, machine.getTrueParallel()));
+                totalParallel = saturatingParallelAdd(
+                    totalParallel,
+                    HostedSpaceAssemblerSupport.getParallelCapacity(machine));
             }
             final int aggregateParallel = Math.max(1, totalParallel);
 
@@ -1229,7 +1238,8 @@ final class HostedMachineCoordinator {
             originalNormal = representative.mEnergyHatches;
             originalExotic = representative.getExoticEnergyHatches();
 
-            int validHatchCount = 0;
+            boolean stageControllerBuffer = HostedSpaceAssemblerSupport.isSpaceAssembler(representative);
+            int validHatchCount = stageControllerBuffer && representative.getBaseMetaTileEntity() != null ? 1 : 0;
             for (MTEMultiBlockBase machine : machines) {
                 aggregateNormal.addAll(machine.mEnergyHatches);
                 aggregateExotic.addAll(machine.getExoticEnergyHatches());
@@ -1239,6 +1249,9 @@ final class HostedMachineCoordinator {
             energyTiles = new IGregTechTileEntity[validHatchCount];
             savedEnergy = new long[validHatchCount];
             int index = 0;
+            if (stageControllerBuffer && representative.getBaseMetaTileEntity() != null) {
+                energyTiles[index++] = representative.getBaseMetaTileEntity();
+            }
             for (MTEHatch hatch : aggregateNormal) index = addEnergyTile(hatch, energyTiles, index);
             for (MTEHatch hatch : aggregateExotic) index = addEnergyTile(hatch, energyTiles, index);
         }
