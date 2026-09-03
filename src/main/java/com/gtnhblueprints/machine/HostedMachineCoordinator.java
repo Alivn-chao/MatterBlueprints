@@ -1034,6 +1034,12 @@ final class HostedMachineCoordinator {
                     return method;
                 } catch (NoSuchMethodException ignored) {
                     current = current.getSuperclass();
+                } catch (LinkageError | SecurityException unavailableOnThisSide) {
+                    // Dedicated servers do not contain net.minecraft.client classes. Some GT machine classes declare
+                    // unrelated client-only methods, and HotSpot resolves every declared signature while answering
+                    // getDeclaredMethod(). Skip that class and retain the safe base implementation instead of taking
+                    // down the server tick with NoClassDefFoundError.
+                    current = current.getSuperclass();
                 }
             }
             return null;
@@ -1048,6 +1054,8 @@ final class HostedMachineCoordinator {
                     return field;
                 } catch (NoSuchFieldException ignored) {
                     current = current.getSuperclass();
+                } catch (LinkageError | SecurityException unavailableOnThisSide) {
+                    current = current.getSuperclass();
                 }
             }
             return null;
@@ -1061,6 +1069,8 @@ final class HostedMachineCoordinator {
                     current.getDeclaredMethod(name, parameterTypes);
                     return true;
                 } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                } catch (LinkageError | SecurityException unavailableOnThisSide) {
                     current = current.getSuperclass();
                 }
             }
