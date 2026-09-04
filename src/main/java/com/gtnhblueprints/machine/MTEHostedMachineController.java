@@ -2,6 +2,7 @@ package com.gtnhblueprints.machine;
 
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.onElementPass;
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock;
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofChain;
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.transpose;
 import static gregtech.api.enums.HatchElement.InputBus;
 import static gregtech.api.enums.HatchElement.InputHatch;
@@ -19,6 +20,7 @@ import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_BOARD_PROCESS
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -45,6 +47,7 @@ import com.gtnhblueprints.block.BlockHostedMachineCasing;
 import com.gtnhblueprints.registry.ModBlocks;
 
 import gregtech.api.enums.Textures;
+import gregtech.api.enums.MetaTileEntityIDs;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.ICasingTextureProvider;
@@ -56,6 +59,7 @@ import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.render.TextureFactory;
 import gregtech.api.structure.error.StructureError;
 import gregtech.api.util.MultiblockTooltipBuilder;
+import gtPlusPlus.xmod.gregtech.api.metatileentity.implementations.nbthandlers.MTEHatchCatalysts;
 import mcp.mobius.waila.api.IWailaConfigHandler;
 import mcp.mobius.waila.api.IWailaDataAccessor;
 
@@ -71,6 +75,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     private static IStructureDefinition<MTEHostedMachineController> structureDefinition;
 
     private final HostedMachineCoordinator coordinator = new HostedMachineCoordinator(this);
+    private final ArrayList<MTEHatchCatalysts> catalystHatches = new ArrayList<MTEHatchCatalysts>();
     private int casingCount;
     private int guiHostedProgress;
     private int guiHostedMaxProgress;
@@ -97,20 +102,27 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                     STRUCTURE_SHAPE)
                 .addElement(
                     'H',
-                    buildHatchAdder(MTEHostedMachineController.class)
-                        .atLeast(
-                            InputHatch.or(InputBus),
-                            OutputHatch.or(OutputBus),
-                            Maintenance,
-                            Energy.or(ExoticEnergy)
-                                .or(Dynamo)
-                                .or(ExoticDynamo))
-                        .casingIndex(ModBlocks.HOSTED_HATCH_CASING_TEXTURE_ID)
-                        .hint(1)
-                        .buildAndChain(
-                            onElementPass(
-                                machine -> ++machine.casingCount,
-                                ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING))))
+                    ofChain(
+                        buildHatchAdder(MTEHostedMachineController.class)
+                            .hatchId(MetaTileEntityIDs.Bus_Catalysts.ID)
+                            .adder(MTEHostedMachineController::addCatalystHatch)
+                            .casingIndex(ModBlocks.HOSTED_HATCH_CASING_TEXTURE_ID)
+                            .hint(1)
+                            .build(),
+                        buildHatchAdder(MTEHostedMachineController.class)
+                            .atLeast(
+                                InputHatch.or(InputBus),
+                                OutputHatch.or(OutputBus),
+                                Maintenance,
+                                Energy.or(ExoticEnergy)
+                                    .or(Dynamo)
+                                    .or(ExoticDynamo))
+                            .casingIndex(ModBlocks.HOSTED_HATCH_CASING_TEXTURE_ID)
+                            .hint(1)
+                            .buildAndChain(
+                                onElementPass(
+                                    machine -> ++machine.casingCount,
+                                    ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.CASING)))))
                 .addElement('L', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.FLOW_LIGHT))
                 .addElement('V', ofBlock(ModBlocks.HOSTED_MACHINE_CASING, BlockHostedMachineCasing.COOLING_FAN))
                 .build();
@@ -121,11 +133,30 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     public void checkMachine(IGregTechTileEntity tileEntity, ItemStack stack, List<StructureError> errors) {
         casingCount = 0;
+        catalystHatches.clear();
         if (!checkPiece(STRUCTURE_PIECE, OFFSET_X, OFFSET_Y, OFFSET_Z, errors)) return;
         checkCasingMin(errors, casingCount, MINIMUM_CASINGS);
         checkHasAnyInput(errors);
         checkHasAnyOutput(errors);
         checkOneMaintenanceHatch(errors);
+    }
+
+    private boolean addCatalystHatch(IGregTechTileEntity tile, int textureIndex) {
+        if (tile == null || !(tile.getMetaTileEntity() instanceof MTEHatchCatalysts)) return false;
+        MTEHatchCatalysts hatch = (MTEHatchCatalysts) tile.getMetaTileEntity();
+        hatch.updateTexture(textureIndex);
+        if (!catalystHatches.contains(hatch)) catalystHatches.add(hatch);
+        return true;
+    }
+
+    List<ItemStack> getHostedCatalysts() {
+        List<ItemStack> result = new ArrayList<ItemStack>();
+        for (MTEHatchCatalysts hatch : catalystHatches) {
+            if (hatch == null || !hatch.isValid()) continue;
+            hatch.tryFillUsageSlots();
+            result.addAll(hatch.getContentUsageSlots());
+        }
+        return result;
     }
 
     @Override
@@ -424,6 +455,8 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.mechanics"))
             .addInfo(tr("matterblueprints.host.tooltip.batch"))
             .addInfo(tr("matterblueprints.host.tooltip.generator"))
+            .addInfo(tr("matterblueprints.host.tooltip.chemical_catalyst"))
+            .addInfo(tr("matterblueprints.host.tooltip.chemical_tiers"))
             .addSeparator()
             .addInfo(tr("matterblueprints.host.tooltip.link_title"))
             .addInfo(tr("matterblueprints.host.tooltip.link_1"))
@@ -453,6 +486,11 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addTecTechHatchInfo()
             .addInputAny("1+", tr("matterblueprints.host.tooltip.any_casing"), 1)
             .addOutputAny("1+", tr("matterblueprints.host.tooltip.any_casing"), 1)
+            .addMiscHatch(
+                "0+",
+                tr("matterblueprints.host.tooltip.catalyst_hatch"),
+                tr("matterblueprints.host.tooltip.any_casing"),
+                1)
             .addAir(tr("matterblueprints.host.tooltip.center"))
             .toolTipFinisher();
     }

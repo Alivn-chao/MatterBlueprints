@@ -60,6 +60,7 @@ final class HostedMachineCoordinator {
     private static final Field EXOTIC_ENERGY_HATCHES_FIELD = resolveExoticEnergyHatchesField();
 
     private final MTEHostedMachineController owner;
+    private final HostedChemicalPlantSupport chemicalPlants = new HostedChemicalPlantSupport();
     private final Map<MTEMultiBlockBase, HostedJob> hosted = new IdentityHashMap<MTEMultiBlockBase, HostedJob>();
     private final Set<String> boundMachines = new HashSet<String>();
     private final Set<String> persistedClaims = new HashSet<String>();
@@ -458,6 +459,7 @@ final class HostedMachineCoordinator {
 
     private void release(MTEMultiBlockBase remote, Iterator<MTEMultiBlockBase> iterator) {
         HostedMachineRegistry.release(remote, owner);
+        chemicalPlants.release(remote);
         HostedJob job = hosted.get(remote);
         if (job != null) job.restoreToRemote(remote);
         if (remote == activeRemote) {
@@ -479,6 +481,26 @@ final class HostedMachineCoordinator {
     }
 
     private boolean startRecipe(MTEMultiBlockBase remote) {
+        if (!HostedChemicalPlantSupport.isChemicalPlant(remote)) return startAggregatedRecipe(remote);
+        try {
+            if (!HostedChemicalPlantSupport.hasMatchingConfiguration(remote, hosted.keySet())) {
+                statusKey = "matterblueprints.host.status.chemical_tiers";
+                return false;
+            }
+            try (HostedChemicalPlantSupport.Scope ignored = chemicalPlants.open(remote, owner.getHostedCatalysts())) {
+                boolean started = startAggregatedRecipe(remote);
+                statusKey = started ? "matterblueprints.host.status.hosting"
+                    : "matterblueprints.host.status.chemical_no_recipe";
+                return started;
+            }
+        } catch (RuntimeException | LinkageError error) {
+            MatterBlueprints.LOG.error("Could not prepare central chemical plant catalysts for {}", remote.mName, error);
+            statusKey = "matterblueprints.host.status.chemical_error";
+            return false;
+        }
+    }
+
+    private boolean startAggregatedRecipe(MTEMultiBlockBase remote) {
         HatchSnapshot snapshot = new HatchSnapshot(remote);
         snapshot.useOwnerIO(owner, remote);
         AggregateCapacitySnapshot capacitySnapshot = new AggregateCapacitySnapshot(remote, hosted.keySet());
