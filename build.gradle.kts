@@ -3,7 +3,7 @@ plugins {
     id("com.gtnewhorizons.gtnhconvention")
 }
 
-version = "0.3.6-beta2"
+version = "0.3.28-rc1"
 
 java {
     toolchain {

@@ -22,10 +22,10 @@ public final class MatterBlueprints {
 
     public static final String MODID = "matterblueprints";
     public static final String NAME = "Matter Blueprints";
-    public static final String VERSION = "0.3.6-beta2";
-    public static final String TARGET_GTNH = "2.9.0-beta-2";
-    public static final String TARGET_GTNH_CORE = "2.9.12";
-    public static final String TARGET_MM = "0.1.46-GTNH";
+    public static final String VERSION = "0.3.28-rc1";
+    public static final String TARGET_GTNH = "2.9.0-RC-1";
+    public static final String TARGET_GTNH_CORE = "2.9.76";
+    public static final String TARGET_MM = "0.1.59-GTNH";
     public static final Logger LOG = LogManager.getLogger(MODID);
 
     @SidedProxy(clientSide = "com.gtnhblueprints.ClientProxy", serverSide = "com.gtnhblueprints.CommonProxy")

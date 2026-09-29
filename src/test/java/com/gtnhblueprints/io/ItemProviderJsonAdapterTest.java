@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
+import net.minecraftforge.fluids.FluidStack;
+
 import com.recursive_pineapple.matter_manipulator.common.building.PortableItemStack;
 import com.recursive_pineapple.matter_manipulator.common.building.InventoryAnalysis;
 import com.recursive_pineapple.matter_manipulator.common.building.providers.AECellItemProvider;
@@ -25,20 +27,25 @@ class ItemProviderJsonAdapterTest {
     void readsLegacyAeCellWithoutTypeTag() {
         IItemProvider provider = BlueprintJson.GSON.fromJson(
             "{\"mCell\":{\"id\":\"appliedenergistics2:item.ItemAdvancedStorageCell.256k\"},"
-                + "\"mUpgrades\":[],\"mConfig\":[],\"mFuzzyMode\":0}",
+                + "\"mUpgrades\":[],\"mConfig\":[{\"id\":\"gregtech:gt.metaitem.01\",\"m\":32104}],"
+                + "\"mFuzzyMode\":0}",
             IItemProvider.class);
 
         assertTrue(provider instanceof AECellItemProvider);
+        assertEquals(1, ((AECellItemProvider) provider).mConfigItem.length);
+        assertEquals(32104, ((AECellItemProvider) provider).mConfigItem[0].getMeta());
     }
 
     @Test
     void writesStableTypeTagAndRoundTrips() {
-        IItemProvider provider = new AECellItemProvider();
+        AECellItemProvider provider = new AECellItemProvider();
+        provider.mConfigFluid = new FluidStack[0];
         String encoded = BlueprintJson.GSON.toJson(provider, IItemProvider.class);
         IItemProvider decoded = BlueprintJson.GSON.fromJson(encoded, IItemProvider.class);
 
         assertTrue(encoded.contains("\"$provider\":\"ae_cell\""));
         assertTrue(decoded instanceof AECellItemProvider);
+        assertEquals(0, ((AECellItemProvider) decoded).mConfigFluid.length);
     }
 
     @Test

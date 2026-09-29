@@ -13,7 +13,7 @@ import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.recipe.check.SimpleCheckRecipeResult;
 import gregtech.api.util.GTRecipe;
 
-/** Matches the 5.09.54.20 chemical plant checks, intentionally without its catalyst wear callback. */
+/** Matches the 5.09.54.132 chemical plant checks, intentionally without its catalyst wear callback. */
 final class HostedChemicalPlantProcessingLogic extends ProcessingLogic {
 
     private final Predicate<ItemStack> isCatalyst;

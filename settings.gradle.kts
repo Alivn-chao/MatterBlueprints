@@ -8,6 +8,9 @@ pluginManagement {
         }
     }
     repositories {
+        maven("https://maven.wagyourtail.xyz/releases") {
+            content { includeGroup("xyz.wagyourtail.jvmdowngrader") }
+        }
         // Mainland mirror: avoids intermittent TLS resets from Maven Central/plugin portal.
         maven("https://maven.aliyun.com/repository/gradle-plugin")
         maven("https://maven.aliyun.com/repository/central")

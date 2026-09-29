@@ -26,6 +26,7 @@ import com.recursive_pineapple.matter_manipulator.common.building.providers.Patt
 import cpw.mods.fml.common.registry.GameRegistry.UniqueIdentifier;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.FluidStack;
 
 /** Keeps polymorphic inventory providers portable and reads blueprints written before provider tags existed. */
 public final class ItemProviderJsonAdapter implements JsonSerializer<IItemProvider>, JsonDeserializer<IItemProvider> {
@@ -40,6 +41,7 @@ public final class ItemProviderJsonAdapter implements JsonSerializer<IItemProvid
     private static final Gson PROVIDER_FIELDS = new GsonBuilder()
         .registerTypeAdapter(UniqueIdentifier.class, new UIDJsonAdapter())
         .registerTypeAdapter(NBTTagCompound.class, new CompatibleNBTJsonAdapter())
+        .registerTypeAdapter(FluidStack.class, new FluidStackJsonAdapter())
         .registerTypeAdapter(ForgeDirection.class, new StaticEnumJsonAdapter<>(ForgeDirection.class))
         .disableHtmlEscaping()
         .create();
@@ -70,7 +72,7 @@ public final class ItemProviderJsonAdapter implements JsonSerializer<IItemProvid
             case "portable":
                 return PROVIDER_FIELDS.fromJson(object, PortableItemStack.class);
             case "ae_cell":
-                return PROVIDER_FIELDS.fromJson(object, AECellItemProvider.class);
+                return readAeCell(object);
             case "battery":
                 return readBattery(object, context);
             case "computer_component":
@@ -107,6 +109,15 @@ public final class ItemProviderJsonAdapter implements JsonSerializer<IItemProvid
         BatteryItemProvider provider = new BatteryItemProvider();
         provider.battery = new ItemMeta(stack.getItem(), stack.getItemDamage());
         return provider;
+    }
+
+    private static AECellItemProvider readAeCell(JsonObject object) {
+        // Matter Manipulator 0.1.55 split the old item-only mConfig array into item and fluid arrays.
+        // Preserve item filters stored by beta-2 blueprints when loading them on beta-3.
+        if (object.has("mConfig") && !object.has("mConfigItem")) {
+            object.add("mConfigItem", object.get("mConfig"));
+        }
+        return PROVIDER_FIELDS.fromJson(object, AECellItemProvider.class);
     }
 
     private static ComputerComponentItemProvider readComputerComponent(

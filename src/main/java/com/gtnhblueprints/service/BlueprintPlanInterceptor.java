@@ -34,7 +34,7 @@ public final class BlueprintPlanInterceptor {
             MatterBlueprints.LOG.info("GTBP blueprint planning is connected to Matter Manipulator's native planning menu");
         } catch (ReflectiveOperationException | RuntimeException exception) {
             MatterBlueprints.LOG.error(
-                "Could not connect GTBP plans to Matter Manipulator 0.1.46; /gtbp plan remains available",
+                "Could not connect GTBP plans to Matter Manipulator 0.1.59; /gtbp plan remains available",
                 exception);
         }
     }

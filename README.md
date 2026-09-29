@@ -1,6 +1,10 @@
 # Matter Blueprints
 
-面向 **GT New Horizons 2.9.0-beta-2**、**GTNewHorizonsCoreMod 2.9.12** 与 **Matter Manipulator 0.1.46-GTNH** 的蓝图附属模组首阶段版本。
+面向 **GT New Horizons 2.9.0-RC-1**、**GTNewHorizonsCoreMod 2.9.76** 与 **Matter Manipulator 0.1.59-GTNH** 的蓝图附属模组首阶段版本。
+
+本版以 0.3.28-beta3 为基础适配，版本为 **0.3.28-rc1**；依赖变更、旧蓝图兼容及验证范围见 [RC-1 兼容说明](docs/rc1-compatibility.md)。
+
+当前修正版已接入真实批处理与不足 1 tick 的超频收益，详见 [批处理与超频说明](docs/batch-subtick-hosting.md)。
 
 它把物质操纵者选区保存为可携带的 `.gtbp` 文件，并复用 Matter Manipulator 自己的材料、电量、权限和放置逻辑来搭建。客户端与服务器均需安装本模组。
 
@@ -23,8 +27,8 @@
 - `.gtbp` gzip JSON、原子写入、安全文件名、体积与解压上限
 - 蓝图格式、Matter Manipulator、依赖模组及方块解析兼容检查
 - 每次搭建重新分配 AE2 P2P 频率，同时保持蓝图内相同频率的分组关系
-- 完整保存 Translocator 1.4.4 的六面附件、红石/快速/钻石升级与物品过滤配置，并随旋转和镜像变换安装面
-- 兼容 Matter Manipulator 0.1.46 写出的空 NBT 字符串，避免 AE 空过滤器导致整份蓝图显示“JSON 无效”
+- 完整保存 Translocator 1.4.5 的六面附件、红石/快速/钻石升级与物品过滤配置，并随旋转和镜像变换安装面
+- 兼容 Matter Manipulator 0.1.55 及旧版写出的空 NBT 字符串，避免 AE 空过滤器导致整份蓝图显示“JSON 无效”
 - 普通方块“蓝图替换配置机”：列出蓝图内全部方块类型，可用实物逐项替换能源仓、玻璃、线圈、外壳等等级
 - 配置机可读取客户端本地蓝图或服务器蓝图库；服务器蓝图先下载，再配置、导出并立即载入物质操纵者
 - 替换结果烘焙进新的 `.gtbp` 文件并保留来源与替换记录，不会修改原蓝图
@@ -33,11 +37,23 @@
 
 ## 安装
 
+托管机器清单、投料、供电、里程碑和配置的统一说明见 [托管中心完整使用说明](docs/托管中心完整使用说明.md)。
+
+跨配方并行及任务上限配置见 [`docs/cross-recipe-hosting.md`](docs/cross-recipe-hosting.md)。
+
+聚变机器的免开机费、聚合供电与输出等待规则见 [`docs/fusion-hosting.md`](docs/fusion-hosting.md)。
+
+放热壁炉、吸热冰箱和巨型合金冶炼炉的托管适配、时间满级效果及能量 V 级无损超频见
+[`docs/thermal-machine-hosting.md`](docs/thermal-machine-hosting.md)。
+
+装配线与进阶装配线现在支持中心数据访问仓、无序投料和等效并行；使用方法及超频配置见
+[`docs/assembly-line-hosting.md`](docs/assembly-line-hosting.md)。
+
 把构建出的 JAR 同时放入客户端和服务器的 `mods` 目录。目标环境必须是：
 
-- GTNH `2.9.0-beta-2`
-- GTNewHorizonsCoreMod `2.9.12`（模组 ID：`dreamcraft`）
-- Matter Manipulator `0.1.46-GTNH`
+- GTNH `2.9.0-RC-1`
+- GTNewHorizonsCoreMod `2.9.76`（模组 ID：`dreamcraft`）
+- Matter Manipulator `0.1.59-GTNH`
 - Minecraft `1.7.10`
 
 蓝图目录位于实例根目录的 `matter-blueprints/`，配置文件位于 `config/matterblueprints.cfg`。
@@ -66,10 +82,10 @@
 3. 使用托管绑定器：Shift+左键托管中心控制器记录主机器，再右键需要托管的远端控制器进行加入或移除。远端机器仍须完整搭建、正常成型并保留自己的能源仓或动力舱；这些仓室不必接线，但其等级和安培数仍决定机器配方、超频或发电额定值。
 4. 把一种远端多方块的控制器物品放进托管中心的控制器槽。中心只会接管已明确绑定且与该物品同类型的远端机器，不会混跑不同机器。
 5. 在托管中心安装 1 个特殊能源仓（支持多安/激光）或 1～2 个普通能源仓并接电。所有托管任务共用中心的实时输入功率和储能，功率不足时任务暂停等待，不会偷偷消耗远端存电。
-6. 原料和流体从托管中心输入，成品从托管中心输出。中心只做一次配方检查，把全部同类远端机器的产能合并成一个聚合任务；不会为每台机器建立一份逐 tick 任务。配方、电压、超频、线圈/玻璃等级、机器模式、并行和维护仍以真实远端机器为依据。托管中心支持 GT 原生批处理开关，并在主界面、信息面板和 WAILA 显示聚合进度、实际并行、中央功率和连接机器数。
+6. 原料和流体从托管中心输入，成品从托管中心输出。中心按当前里程碑把全部同类远端机器汇成少量聚合任务，不会为每份并行建立逐 tick 任务。配方、电压、超频、线圈/玻璃等级、机器模式、并行和维护仍以真实远端机器为依据。托管中心支持 GT 原生批处理开关，并在主界面、信息面板和 WAILA 显示各聚合任务进度、实际并行、中央功率和连接机器数。
 7. 关闭托管中心的工作开关时，正在执行的聚合配方会像原生 GT 机器一样先完成并输出，然后停止接取新配方。取出类型控制器、拆坏结构、拆除控制器或卸载区块时，未完成任务会归还远端机器，远端恢复自己的正常运行。
 
-空闲远端不会再各自反复扫配方；托管中心默认每 5 tick 只做一次聚合配方检查。运行时也只有一个聚合任务、一次进度推进和一次中央扣电，机器数量只提高该次检查可用的总并行，不会线性增加逐 tick 的配方任务数量。可以在 `matterblueprints.cfg` 调高 `hostedMachineRecipeCheckIntervalTicks` 进一步降低空闲消耗，代价是新配方启动稍慢。
+空闲远端不会再各自反复扫配方；托管中心默认每 5 tick 才扫描一次新配方，并在持续空闲时把间隔退避到 100 tick。未解锁里程碑时只有一个聚合任务；解锁后最多为 4、16 或托管机器数量个任务，各任务内部仍是一次聚合计算与一次中央扣电，不按并行份数创建 tick 实例。可以在 `matterblueprints.cfg` 调高 `hostedMachineRecipeCheckIntervalTicks` 进一步降低空闲消耗，代价是新配方启动稍慢。完整成长数值见 [`docs/host-progression.md`](docs/host-progression.md)。
 
 机房方块材质位于 `src/main/resources/assets/matterblueprints/textures/blocks/`：`host_casing.png` 是普通外壳，`host_casing_light.png` 是 8 帧流动灯带图集，`host_cooling_fan.png` 是同风格散热风扇；对应的 `_emissive.png` 是 Angelica 发光层。运行 `tools/generate_host_casing_textures.py` 可重新生成全部 16×16 材质；`tools/render_jiegou_structure_preview.py` 会按真实 17×5×5 方块表生成结构示意图。
 
@@ -104,7 +120,7 @@
 - 计划功能需要 MKIII、有效的量子上行链路及其已连接的 AE 网络；未绑定 GTBP 蓝图时，原生规划功能保持不变。
 - Smart Copy 的源坐标不会写入蓝图，跨位置无线链接不会恢复。
 - 目标区块必须已加载，目标必须在所持物质操纵者的有效范围内。
-- 只对 Matter Manipulator `0.1.46-GTNH` 开放搭建；GTNewHorizonsCoreMod 已按 `2.9.12` 验证，版本不同会报告警告但不会仅因 Core 小版本不同阻断蓝图。缺失蓝图方块所需模组或无法解析方块仍会拒绝使用。
+- 只对 Matter Manipulator `0.1.59-GTNH` 开放搭建；GTNewHorizonsCoreMod 已按 `2.9.76` 验证，版本不同会报告警告但不会仅因 Core 小版本不同阻断蓝图。缺失蓝图方块所需模组或无法解析方块仍会拒绝使用。
 
 ## 使用电脑现有 Java 25 构建
 

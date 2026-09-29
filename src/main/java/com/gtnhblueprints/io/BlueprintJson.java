@@ -5,6 +5,7 @@ import java.util.BitSet;
 import net.minecraft.nbt.NBTTagCompound;
 
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.FluidStack;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -22,6 +23,7 @@ public final class BlueprintJson {
     public static final Gson GSON = new GsonBuilder()
         .registerTypeAdapter(UniqueIdentifier.class, new UIDJsonAdapter())
         .registerTypeAdapter(NBTTagCompound.class, new CompatibleNBTJsonAdapter())
+        .registerTypeAdapter(FluidStack.class, new FluidStackJsonAdapter())
         .registerTypeAdapter(ForgeDirection.class, new StaticEnumJsonAdapter<>(ForgeDirection.class))
         .registerTypeAdapter(WeightedSpecList.class, new WeightedListJsonAdapter())
         .registerTypeAdapter(BitSet.class, new BitSetJsonAdapter())

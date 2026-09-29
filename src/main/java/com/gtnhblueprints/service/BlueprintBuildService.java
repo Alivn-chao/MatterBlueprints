@@ -123,7 +123,7 @@ public final class BlueprintBuildService {
         try {
             return (Collection<PendingBlock>) PENDING_BLOCKS.get(build);
         } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("无法读取 Matter Manipulator 0.1.46 的搭建队列", exception);
+            throw new IllegalStateException("无法读取 Matter Manipulator 0.1.59 的搭建队列", exception);
         }
     }
 

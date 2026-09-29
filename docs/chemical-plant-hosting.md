@@ -15,7 +15,7 @@
 
 ## 范围与实现
 
-- 适配 GT5-Unofficial 5.09.54.20 的 GT++ Chemical Plant。
+- 适配 GT5-Unofficial 5.09.54.132 的 GT++ Chemical Plant。
 - 只在托管配方检查期间临时替换 ProcessingLogic，正常运行的化工厂仍遵循原版损耗机制。
 - 保留原化工厂的 setupProcessingLogic，因此不修改线圈速度、正常功耗计算或机器等级字段。
 - 缓存托管配方逻辑以保留配方缓存；按开工时的中央催化剂快照匹配，不在每个 tick 重复扫描仓室。

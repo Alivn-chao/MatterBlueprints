@@ -34,28 +34,31 @@
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
 dependencies {
-    compileOnly("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.20:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.183:dev") { transitive = false }
     compileOnly("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
-    compileOnly("com.github.GTNewHorizons:ModularUI2:2.3.79-1.7.10:dev") { transitive = false }
-    compileOnly("com.github.GTNewHorizons:waila:1.19.30:dev") { transitive = false }
-    compileOnly("com.github.GTNewHorizons:MatterManipulator:0.1.46-GTNH:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:ModularUI2:2.3.91-1.7.10:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:waila:1.19.34:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:MatterManipulator:0.1.59-GTNH:dev") { transitive = false }
     compileOnly("org.joml:joml:1.10.8")
     compileOnly("it.unimi.dsi:fastutil:8.5.18")
-    compileOnly("com.github.GTNewHorizons:StructureLib:1.4.40:dev") { transitive = false }
-    compileOnly(files("libs/GTNHLib-0.11.21-dev.jar"))
+    compileOnly("com.github.GTNewHorizons:StructureLib:1.4.45:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:GTNHLib:0.11.51:dev") { transitive = false }
     compileOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev")
-    compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-997-GTNH:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1073-GTNH:dev") { transitive = false }
 
     testImplementation(platform("org.junit:junit-bom:5.9.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("com.github.GTNewHorizons:MatterManipulator:0.1.46-GTNH:dev") { transitive = false }
+    testImplementation("com.github.GTNewHorizons:MatterManipulator:0.1.59-GTNH:dev") { transitive = false }
     testImplementation("org.joml:joml:1.10.8")
     testImplementation("it.unimi.dsi:fastutil:8.5.18")
-    testImplementation("com.github.GTNewHorizons:StructureLib:1.4.40:dev") { transitive = false }
-    testImplementation("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.20:dev") { transitive = false }
-    testImplementation(files("libs/GTNHLib-0.11.21-dev.jar"))
-    testImplementation("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-997-GTNH:dev") {
+    testImplementation("com.github.GTNewHorizons:StructureLib:1.4.45:dev") { transitive = false }
+    testImplementation("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.183:dev") { transitive = false }
+    testImplementation("com.github.GTNewHorizons:GTNHLib:0.11.51:dev") { transitive = false }
+    testImplementation("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1073-GTNH:dev") {
         transitive = false
     }
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { transitive = false }
+    testRuntimeOnly("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
+    testRuntimeOnly("com.github.GTNewHorizons:ModularUI2:2.3.91-1.7.10:dev") { transitive = false }
 }

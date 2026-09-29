@@ -63,6 +63,7 @@ public final class BlueprintConfig {
             1,
             100,
             "Ticks between round-robin recipe checks. One idle remote is checked each interval; increase this value to reduce idle TPS cost.");
+        HostedMilestoneConfig.load(config);
         if (config.hasChanged()) config.save();
     }
 }
