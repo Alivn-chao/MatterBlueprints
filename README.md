@@ -1,11 +1,7 @@
 # Matter Blueprints
 
-面向 **GT New Horizons 2.9.0-RC-1**、**GTNewHorizonsCoreMod 2.9.76** 与 **Matter Manipulator 0.1.59-GTNH** 的蓝图附属模组首阶段版本。
-
-本版以 0.3.28-beta3 为基础适配，版本为 **0.3.28-rc1**；依赖变更、旧蓝图兼容及验证范围见 [RC-1 兼容说明](docs/rc1-compatibility.md)。
-
-当前修正版已接入真实批处理与不足 1 tick 的超频收益，详见 [批处理与超频说明](docs/batch-subtick-hosting.md)。
-
+面向 **GT New Horizons 2.9.0-beta3**、**GTNewHorizonsCoreMod 2.9.76** 与 **Matter Manipulator 0.1.59-GTNH** 的蓝图附属模组首阶段版本。
+本版以 0.3.28-beta3 为基础适配 [RC-1 兼容说明](docs/rc1-compatibility.md)。
 它把物质操纵者选区保存为可携带的 `.gtbp` 文件，并复用 Matter Manipulator 自己的材料、电量、权限和放置逻辑来搭建。客户端与服务器均需安装本模组。
 
 ## 当前已实现
