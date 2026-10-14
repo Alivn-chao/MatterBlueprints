@@ -1,7 +1,11 @@
 # Matter Blueprints
 
-面向 **GT New Horizons 2.9.0-beta3**、**GTNewHorizonsCoreMod 2.9.76** 与 **Matter Manipulator 0.1.59-GTNH** 的蓝图附属模组首阶段版本。
-本版以 0.3.28-beta3 为基础适配 [RC-1 兼容说明](docs/rc1-compatibility.md)。
+面向 **GT New Horizons 2.9.0-beta-3**、**GTNewHorizonsCoreMod 2.9.61** 与 **Matter Manipulator 0.1.55-GTNH** 的蓝图附属模组首阶段版本。
+
+当前版本为 **0.4.1**，面向上述 beta-3 环境，修复托管硅岩反应堆的空间激发液和时间冷却液未享受持续时间加成的问题，详见 [0.4.1 更新说明](docs/0.4.1-naquadah-fuel.md)。保留真空管、框架及装配线修复，见 [0.4.0 更新说明](docs/0.4.0-blueprint-compatibility.md)。历史 RC-1 构建记录见 [RC-1 兼容说明](docs/rc1-compatibility.md)。
+
+当前修正版已接入真实批处理与不足 1 tick 的超频收益，详见 [批处理与超频说明](docs/batch-subtick-hosting.md)。
+
 它把物质操纵者选区保存为可携带的 `.gtbp` 文件，并复用 Matter Manipulator 自己的材料、电量、权限和放置逻辑来搭建。客户端与服务器均需安装本模组。
 
 ## 当前已实现
@@ -47,9 +51,9 @@
 
 把构建出的 JAR 同时放入客户端和服务器的 `mods` 目录。目标环境必须是：
 
-- GTNH `2.9.0-RC-1`
-- GTNewHorizonsCoreMod `2.9.76`（模组 ID：`dreamcraft`）
-- Matter Manipulator `0.1.59-GTNH`
+- GTNH `2.9.0-beta-3`
+- GTNewHorizonsCoreMod `2.9.61`（模组 ID：`dreamcraft`）
+- Matter Manipulator `0.1.55-GTNH`
 - Minecraft `1.7.10`
 
 蓝图目录位于实例根目录的 `matter-blueprints/`，配置文件位于 `config/matterblueprints.cfg`。
@@ -116,7 +120,7 @@
 - 计划功能需要 MKIII、有效的量子上行链路及其已连接的 AE 网络；未绑定 GTBP 蓝图时，原生规划功能保持不变。
 - Smart Copy 的源坐标不会写入蓝图，跨位置无线链接不会恢复。
 - 目标区块必须已加载，目标必须在所持物质操纵者的有效范围内。
-- 只对 Matter Manipulator `0.1.59-GTNH` 开放搭建；GTNewHorizonsCoreMod 已按 `2.9.76` 验证，版本不同会报告警告但不会仅因 Core 小版本不同阻断蓝图。缺失蓝图方块所需模组或无法解析方块仍会拒绝使用。
+- 只对 Matter Manipulator `0.1.55-GTNH` 开放搭建；GTNewHorizonsCoreMod 已按 `2.9.61` 验证，版本不同会报告警告但不会仅因 Core 小版本不同阻断蓝图。缺失蓝图方块所需模组或无法解析方块仍会拒绝使用。
 
 ## 使用电脑现有 Java 25 构建
 

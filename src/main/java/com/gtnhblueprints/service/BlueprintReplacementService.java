@@ -45,7 +45,8 @@ public final class BlueprintReplacementService {
 
     public static BlockSpec replacementFrom(ItemStack stack) {
         if (stack == null || stack.getItem() == null) throw new IllegalArgumentException("请先在替换槽放入目标方块");
-        BlockSpec spec = new BlockSpec().setObject(stack.copy());
+        BlockSpec spec = com.gtnhblueprints.model.GregTechBlueprintCompatibility.normalize(
+            new BlockSpec().setObject(stack.copy()), null);
         spec.populate();
         Block block = spec.getBlock();
         if (block == null || block == Blocks.air || spec.isAir()) {

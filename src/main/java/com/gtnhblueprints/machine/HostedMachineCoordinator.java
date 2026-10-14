@@ -917,7 +917,7 @@ final class HostedMachineCoordinator {
             long power = getAvailableConsumerPowerForNewJob();
             if (power <= 0) break;
             int laneUnits = Math.max(1, units / Math.min(slots, recipes.size() - i));
-            if (!startEquivalentAssembly(remote, recipe, key, laneUnits, power)) continue;
+            if (!startEquivalentAssembly(remote, recipe, recipes, key, laneUnits, power)) continue;
             used.add(remote);
             active.add(key);
             units -= hosted.get(remote).assemblyUnits;
@@ -931,7 +931,7 @@ final class HostedMachineCoordinator {
     }
 
     private boolean startEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
-        String key, int units, long availablePower) {
+        List<GTRecipe.RecipeAssemblyLine> researched, String key, int units, long availablePower) {
         VoltageTierSnapshot voltage = new VoltageTierSnapshot(remote, progression.hasVoltageExtension());
         boolean started = false;
         owner.setCheckRecipeResult(CheckRecipeResultRegistry.SUCCESSFUL);
@@ -943,10 +943,12 @@ final class HostedMachineCoordinator {
                 while (inventories.hasNext()) {
                     gregtech.common.tileentities.machines.IDualInputInventory inventory = inventories.next();
                     if (inventory.isEmpty()) continue;
+                    List<GTRecipe.RecipeAssemblyLine> bufferRecipes = HostedAssemblySelection.forInventory(researched, inventory);
+                    if (!bufferRecipes.contains(recipe)) continue;
                     List<ItemStack> inputs = new ArrayList<>(java.util.Arrays.asList(inventory.getItemInputs()));
                     ItemStack[] shared = hatch.getSharedItems();
                     if (shared != null) Collections.addAll(inputs, shared);
-                    if (commitEquivalentAssembly(remote, recipe, key, units, availablePower,
+                    if (commitEquivalentAssembly(remote, recipe, bufferRecipes, key, units, availablePower,
                         HostedAssemblySupport.uniqueItems(inputs), HostedAssemblySupport.uniqueFluids(
                             java.util.Arrays.asList(inventory.getFluidInputs())))) {
                         started = true;
@@ -955,7 +957,7 @@ final class HostedMachineCoordinator {
                 }
                 if (started) break;
             }
-            if (!started) started = commitEquivalentAssembly(remote, recipe, key, units, availablePower,
+            if (!started) started = commitEquivalentAssembly(remote, recipe, researched, key, units, availablePower,
                 HostedAssemblySupport.uniqueItems(owner.getStoredInputs()),
                 HostedAssemblySupport.uniqueFluids(owner.getStoredFluids()));
             if (started) owner.updateSlots();
@@ -974,7 +976,9 @@ final class HostedMachineCoordinator {
     }
 
     private boolean commitEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
-        String key, int units, long availablePower, ItemStack[] items, FluidStack[] fluids) {
+        List<GTRecipe.RecipeAssemblyLine> researched, String key, int units, long availablePower,
+        ItemStack[] items, FluidStack[] fluids) {
+        if (!HostedAssemblySelection.mayStart(recipe, researched, items, fluids)) return false;
         HostedAssemblySupport.Prepared prepared = HostedAssemblySupport.prepare(owner, remote, recipe, units,
             availablePower, progression, items, fluids);
         if (prepared == null) return false;
@@ -1254,7 +1258,11 @@ final class HostedMachineCoordinator {
             }
         }
         if (!successful || remote.mMaxProgresstime <= 0) return false;
+        int generatorBaseDuration = remote.mMaxProgresstime;
         job.captureFromRemote(remote, 1, 1, REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote));
+        job.generatorBaseDuration = generatorBaseDuration;
+        job.generatorAuxiliaryCycle = -1;
+        job.generatorAuxiliaryOutput = 0;
         job.maxProgress = progression.applyGeneratorDuration(job.maxProgress, hosted.size());
         return true;
     }
@@ -1279,7 +1287,8 @@ final class HostedMachineCoordinator {
             if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
 
             ioSnapshot.useOwnerIO(owner, remote);
-            if (!remote.onRunningTick(remote.getControllerSlot())) return;
+            if (!HostedNaquadahSupport.run(remote, job,
+                () -> REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote))) return;
             if (remote.mMaxProgresstime <= 0) return;
 
             long generated = REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote);
@@ -2354,6 +2363,9 @@ final class HostedMachineCoordinator {
     }
 
     static final class HostedJob {
+        int generatorBaseDuration;
+        int generatorAuxiliaryCycle = -1;
+        long generatorAuxiliaryOutput;
         long plasmaRuntime = -1L;
         float thermalGrowth = -1F;
         int thermalTicks;
@@ -2426,6 +2438,9 @@ final class HostedMachineCoordinator {
         }
 
         void clear() {
+            generatorBaseDuration = 0;
+            generatorAuxiliaryCycle = -1;
+            generatorAuxiliaryOutput = 0;
             equivalentAssembly = false;
             assemblyUnits = 0;
             progress = 0;
@@ -2455,6 +2470,9 @@ final class HostedMachineCoordinator {
         }
 
         void writeToNBT(NBTTagCompound tag) {
+            tag.setInteger("generatorBaseDuration", generatorBaseDuration);
+            tag.setInteger("generatorAuxiliaryCycle", generatorAuxiliaryCycle);
+            tag.setLong("generatorAuxiliaryOutput", generatorAuxiliaryOutput);
             tag.setInteger("progress", progress);
             tag.setInteger("maxProgress", maxProgress);
             tag.setInteger("machineCount", machineCount);
@@ -2479,6 +2497,10 @@ final class HostedMachineCoordinator {
 
         static HostedJob readFromNBT(NBTTagCompound tag) {
             HostedJob job = new HostedJob();
+            job.generatorBaseDuration = Math.max(0, tag.getInteger("generatorBaseDuration"));
+            job.generatorAuxiliaryCycle = tag.hasKey("generatorAuxiliaryCycle")
+                ? Math.max(-1, tag.getInteger("generatorAuxiliaryCycle")) : -1;
+            job.generatorAuxiliaryOutput = Math.max(0L, tag.getLong("generatorAuxiliaryOutput"));
             job.progress = Math.max(0, tag.getInteger("progress"));
             job.maxProgress = Math.max(0, tag.getInteger("maxProgress"));
             job.machineCount = Math.max(0, tag.getInteger("machineCount"));

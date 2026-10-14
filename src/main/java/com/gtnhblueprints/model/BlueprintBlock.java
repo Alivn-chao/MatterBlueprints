@@ -36,7 +36,7 @@ public final class BlueprintBlock {
         block.x = source.x;
         block.y = source.y;
         block.z = source.z;
-        block.spec = (BlockSpec) source.spec;
+        block.spec = GregTechBlueprintCompatibility.normalize((BlockSpec) source.spec, sourceTile);
         if (source.gt instanceof GTAnalysisResult) block.gt = (GTAnalysisResult) source.gt;
         if (source.ae instanceof AEAnalysisResult) block.ae = (AEAnalysisResult) source.ae;
         if (source.arch instanceof ArchitectureCraftAnalysisResult) {
@@ -57,8 +57,8 @@ public final class BlueprintBlock {
     }
 
     public PendingBlock instantiate(int worldId) {
-        PendingBlock block = new PendingBlock(worldId, x, y, z, spec);
-        block.gt = gt;
+        PendingBlock block = new PendingBlock(worldId, x, y, z, GregTechBlueprintCompatibility.normalize(spec, null));
+        block.gt = gt == null ? null : new GregTechPlacementTraits(gt);
         block.ae = ae;
         block.arch = architecture;
         block.mp = multipart;
