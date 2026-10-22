@@ -29,9 +29,13 @@ final class HostedProgression {
     }
 
     void recordGeneratorTick(long acceptedEU, int runningMachines) {
+        recordGeneratorTick(BigInteger.valueOf(acceptedEU), runningMachines);
+    }
+
+    void recordGeneratorTick(BigInteger acceptedEU, int runningMachines) {
         productiveTicks = saturatingAdd(productiveTicks, 1L);
         hasPermanentPlasmaFuelDiscount();
-        addEnergy(acceptedEU);
+        if (acceptedEU.signum() > 0) energyThroughput = energyThroughput.add(acceptedEU);
         generatorWorkTickRemainder = saturatingAdd(generatorWorkTickRemainder, Math.max(0, runningMachines));
         if (generatorWorkTickRemainder >= 20L) {
             workUnits = saturatingAdd(workUnits, generatorWorkTickRemainder / 20L);

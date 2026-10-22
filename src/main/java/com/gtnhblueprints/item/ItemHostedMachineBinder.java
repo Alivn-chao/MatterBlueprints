@@ -33,7 +33,7 @@ public final class ItemHostedMachineBinder extends Item {
         setMaxStackSize(1);
         setCreativeTab(CreativeTabs.tabTools);
         setUnlocalizedName("matterblueprints.hostedMachineBinder");
-        setTextureName("minecraft:comparator");
+        setTextureName("matterblueprints:hosted_machine_binder");
     }
 
     @SubscribeEvent

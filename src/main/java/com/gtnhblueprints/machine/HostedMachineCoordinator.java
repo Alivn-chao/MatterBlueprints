@@ -2,6 +2,7 @@ package com.gtnhblueprints.machine;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -50,6 +51,7 @@ import gregtech.common.tileentities.machines.IDualInputHatch;
 import gregtech.common.tileentities.machines.multi.drone.MTEHatchDroneDownLink;
 import gregtech.common.tileentities.machines.multi.turbines.MTELargeTurbineBase;
 import gregtech.common.tileentities.machines.multi.xlturbines.MTEXLTurbineBase;
+import goodgenerator.blocks.tileEntity.AntimatterOutputHatch;
 
 final class HostedMachineCoordinator {
 
@@ -102,9 +104,19 @@ final class HostedMachineCoordinator {
     private long energyGeneratedThisTick;
     private int generatorsAdvancedThisTick;
     private long centralPowerCapacity;
+    private BigInteger generatedEnergyExact = BigInteger.ZERO;
     private long nextRecipeCheckTick;
     private int idleRecipeCheckDelay;
     private boolean generatorMode;
+    private int plasmaMatrixCount;
+    private int plasmaPlainCount;
+    private long antimatterAccountingTick = Long.MIN_VALUE;
+    private MTEMultiBlockBase antimatterLeader;
+    private HostedJob antimatterBatch = new HostedJob();
+    private long antimatterRollingCost;
+    private float antimatterMagneticModifier;
+    private long antimatterOverflow;
+    private long antimatterStagedOverflow;
 
     HostedMachineCoordinator(MTEHostedMachineController owner) {
         this.owner = owner;
@@ -148,9 +160,15 @@ final class HostedMachineCoordinator {
     }
 
     void tick(long worldTick, boolean allowNewRecipe) {
+        flushAntimatterOverflow();
+        if (isAntimatterMode()) {
+            tickAntimatter(worldTick, allowNewRecipe);
+            return;
+        }
         energySpentThisTick = 0;
         consumersAdvancedThisTick = false;
         energyGeneratedThisTick = 0;
+        generatedEnergyExact = BigInteger.ZERO;
         generatorsAdvancedThisTick = 0;
         centralDynamoUsedThisTick.clear();
         if ((isGeneratorMode() ? !owner.isWirelessMode() && centralDynamoHatches.isEmpty() : !owner.isWirelessMode() && centralEnergyHatches.isEmpty())
@@ -189,6 +207,11 @@ final class HostedMachineCoordinator {
         MTEMultiBlockBase assemblyPlanner = hosted.isEmpty() ? null : hosted.keySet().iterator().next();
         if (assemblyPlanner != null && HostedAssemblySupport.isAssembly(assemblyPlanner)) {
             if (allowNewRecipe && worldTick >= nextRecipeCheckTick) scheduleAssemblyRecipes(worldTick);
+            deactivateRemotes();
+            return;
+        }
+        if (assemblyPlanner != null && HostedPlasmaForgeSupport.isPlasmaForge(assemblyPlanner)) {
+            if (allowNewRecipe && worldTick >= nextRecipeCheckTick) schedulePlasmaRecipes(worldTick);
             deactivateRemotes();
             return;
         }
@@ -238,11 +261,154 @@ final class HostedMachineCoordinator {
         deactivateRemotes();
     }
 
+    private boolean isAntimatterMode() {
+        return !hosted.isEmpty() && HostedAntimatterSupport.isAntimatter(hosted.keySet().iterator().next());
+    }
+
+    private void beginAntimatterAccounting() {
+        long tick = owner.getBaseMetaTileEntity().getWorld().getTotalWorldTime();
+        if (antimatterAccountingTick == tick) return;
+        antimatterAccountingTick = tick;
+        energySpentThisTick = 0;
+        refreshCentralPower();
+    }
+
+    private boolean drainAntimatterEnergy(long amount, boolean cycle) {
+        if (!owner.isValid() || !owner.mMachine || owner.getBaseMetaTileEntity() == null) return false;
+        beginAntimatterAccounting();
+        // The native sequencer withdraws a lump sum directly from hatch buffers, including its cycle cost.
+        // Do not turn that charge into EU/t or charge it again during the following 20-tick cooldown.
+        boolean paid = drainFusionStartupEnergy(amount);
+        if (paid) energySpentThisTick = saturatingAdd(energySpentThisTick, Math.max(0L, amount));
+        else statusKey = owner.isWirelessMode() ? "matterblueprints.wireless.no_power"
+            : "matterblueprints.host.status.no_central_power";
+        owner.markDirty();
+        return paid;
+    }
+
+    private void tickAntimatter(long worldTick, boolean allowNewRecipe) {
+        beginAntimatterAccounting();
+        worldTick = owner.getBaseMetaTileEntity().getWorld().getTotalWorldTime();
+        selectAntimatterLeader();
+        boolean progressed = false;
+        if (antimatterLeader != null) {
+            HostedJob job = antimatterBatch;
+            if (job.isActive()) {
+                // The native start already applied production. Only advance its prepaid cooldown here.
+                if (job.progress < job.maxProgress) {
+                    job.progress++;
+                    progressed = true;
+                }
+                if (job.progress >= job.maxProgress && antimatterOverflow == 0) job.clear();
+            }
+            if (antimatterOverflow > 0) statusKey = "matterblueprints.host.status.output_full";
+            else if (!job.isActive() && allowNewRecipe && worldTick >= job.nextRecipeCheckTick) {
+                if (getAntimatterBank(antimatterLeader).size() != HostedAntimatterBatch.HATCHES) {
+                    statusKey = "matterblueprints.host.status.antimatter_hatches";
+                } else {
+                    progressed |= startAntimatterBatch(antimatterLeader, worldTick);
+                }
+            }
+        }
+        progression.recordConsumerTick(0L, progressed);
+        refreshActiveRemote();
+        deactivateRemotes();
+    }
+
+    private boolean startAntimatterBatch(MTEMultiBlockBase remote, long worldTick) {
+        remote.checkMaintenance();
+        if (!checkMachinePartAndMaintenance(remote, worldTick)) return false;
+        HatchSnapshot inputs = new HatchSnapshot(remote);
+        inputs.useOwnerIO(owner, remote);
+        boolean successful = false;
+        antimatterStagedOverflow = 0L;
+        try {
+            remote.startRecipeProcessing();
+            CheckRecipeResult result = remote.checkProcessing();
+            remote.setCheckRecipeResult(result);
+            successful = result.wasSuccessful();
+        } catch (RuntimeException error) {
+            MatterBlueprints.LOG.error("Hosted antimatter cycle failed for {}", remote.mName, error);
+            remote.stopMachine();
+        } finally {
+            try {
+                remote.endRecipeProcessing();
+            } finally {
+                inputs.restore(remote);
+            }
+        }
+        successful &= remote.getCheckRecipeResult().wasSuccessful() && remote.mMaxProgresstime > 0;
+        if (successful) {
+            int count = usableAntimatterCount();
+            antimatterBatch.captureFromRemote(remote, count, count, 0L);
+            antimatterBatch.antimatterCycle = true;
+            antimatterOverflow = saturatingAdd(antimatterOverflow, antimatterStagedOverflow);
+            flushAntimatterOverflow();
+            progression.recordCompletedRecipes(count);
+            statusKey = antimatterOverflow > 0 ? "matterblueprints.host.status.output_full"
+                : "matterblueprints.host.status.antimatter";
+        } else {
+            antimatterBatch.hideProgressFromRemote(remote);
+            statusKey = "matterblueprints.host.status.antimatter_failed";
+        }
+        // A tick-by-tick retry would repeatedly apply native failure loss to the same shared inventory.
+        antimatterBatch.nextRecipeCheckTick = worldTick + 20L;
+        antimatterStagedOverflow = 0L;
+        captureAntimatterContainment();
+        owner.markDirty();
+        remote.markDirty();
+        return successful;
+    }
+
+    private int usableAntimatterCount() {
+        int count = 0;
+        for (MTEMultiBlockBase remote : hosted.keySet()) if (isUsable(remote)) count++;
+        return count;
+    }
+
+    private List<AntimatterOutputHatch> getAntimatterBank(MTEMultiBlockBase remote) {
+        List<AntimatterOutputHatch> bank = new ArrayList<>();
+        if (remote != antimatterLeader || !isUsable(remote)) return bank;
+        for (AntimatterOutputHatch hatch : owner.getHostedAntimatterHatches()) {
+            if (hatch != null && hatch.isValid() && !bank.contains(hatch)) bank.add(hatch);
+        }
+        return bank;
+    }
+
+    private void selectAntimatterLeader() {
+        if (antimatterLeader != null && hosted.containsKey(antimatterLeader) && isUsable(antimatterLeader)) return;
+        captureAntimatterContainment();
+        antimatterLeader = hosted.keySet().stream().filter(this::isUsable)
+            .min(Comparator.comparing(this::machineKey)).orElse(null);
+        if (antimatterLeader != null) {
+            ((HostedAntimatterSupport.Patched) antimatterLeader)
+                .matterblueprints$restoreContainment(antimatterRollingCost, antimatterMagneticModifier);
+        }
+    }
+
+    private void captureAntimatterContainment() {
+        if (antimatterLeader == null) return;
+        HostedAntimatterSupport.Patched nativeState = (HostedAntimatterSupport.Patched) antimatterLeader;
+        antimatterRollingCost = nativeState.matterblueprints$getRollingCost();
+        antimatterMagneticModifier = nativeState.matterblueprints$getMagneticModifier();
+    }
+
+    private void flushAntimatterOverflow() {
+        if (antimatterOverflow <= 0) return;
+        FluidStack remaining = gregtech.api.enums.Materials.Antimatter.getFluid(Math.min(Integer.MAX_VALUE, antimatterOverflow));
+        int requested = remaining.amount;
+        List<gregtech.api.interfaces.IOutputHatch> ordinary = owner.getOutputHatches(new FluidStack[] { remaining });
+        ordinary.removeIf(hatch -> hatch instanceof AntimatterOutputHatch);
+        owner.addOutputPartial(remaining, ordinary, true);
+        antimatterOverflow -= requested - remaining.amount;
+        if (requested != remaining.amount) owner.markDirty();
+    }
+
     void releaseAll() {
         Iterator<MTEMultiBlockBase> iterator = hosted.keySet().iterator();
         while (iterator.hasNext()) release(iterator.next(), iterator);
         persistedClaims.clear();
-        pendingJobs.entrySet().removeIf(entry -> !entry.getValue().equivalentAssembly);
+        pendingJobs.entrySet().removeIf(entry -> !entry.getValue().equivalentAssembly && entry.getValue().naquadahCycle == null);
         activeRemote = null;
         runningContext = null;
         centralEnergyHatches.clear();
@@ -281,6 +447,13 @@ final class HostedMachineCoordinator {
     }
 
     void writeToNBT(NBTTagCompound tag) {
+        captureAntimatterContainment();
+        NBTTagCompound batch = new NBTTagCompound();
+        antimatterBatch.writeToNBT(batch);
+        tag.setTag("mbAntimatterBatch", batch);
+        tag.setLong("mbAntimatterRollingCost", antimatterRollingCost);
+        tag.setFloat("mbAntimatterMagnetic", antimatterMagneticModifier);
+        tag.setLong("mbAntimatterOverflow", antimatterOverflow);
         fusionIgnition.write(tag);
         NBTTagList extra = new NBTTagList();
         for (ExtraTask task : extraTasks) {
@@ -316,7 +489,27 @@ final class HostedMachineCoordinator {
         tag.setTag("mbHostYield", yieldTag);
     }
 
+    void writeMilestonesToItem(NBTTagCompound tag) {
+        captureAntimatterContainment();
+        NBTTagCompound batch = new NBTTagCompound();
+        antimatterBatch.writeToNBT(batch);
+        tag.setTag("mbAntimatterBatch", batch);
+        tag.setLong("mbAntimatterRollingCost", antimatterRollingCost);
+        tag.setFloat("mbAntimatterMagnetic", antimatterMagneticModifier);
+        tag.setLong("mbAntimatterOverflow", antimatterOverflow);
+        NBTTagCompound milestones = new NBTTagCompound();
+        progression.writeToNBT(milestones);
+        tag.setTag("mbHostProgression", milestones);
+    }
+
     void readFromNBT(NBTTagCompound tag) {
+        antimatterLeader = null;
+        antimatterBatch = HostedJob.readFromNBT(tag.getCompoundTag("mbAntimatterBatch"));
+        antimatterRollingCost = Math.max(0L, tag.getLong("mbAntimatterRollingCost"));
+        antimatterMagneticModifier = tag.getFloat("mbAntimatterMagnetic");
+        if (Float.isNaN(antimatterMagneticModifier) || Float.isInfinite(antimatterMagneticModifier)) antimatterMagneticModifier = 0F;
+        antimatterOverflow = Math.max(0L, tag.getLong("mbAntimatterOverflow"));
+        antimatterAccountingTick = Long.MIN_VALUE;
         fusionIgnition.read(tag);
         extraTasks.clear();
         NBTTagList extra = tag.getTagList("mbHostExtraTasks", 10);
@@ -353,6 +546,7 @@ final class HostedMachineCoordinator {
     }
 
     int getRunningCount() {
+        if (isAntimatterMode()) return antimatterBatch.isActive() ? usableAntimatterCount() : 0;
         if (isGeneratorMode()) {
             int count = 0;
             for (HostedJob job : hosted.values()) if (job.isActive()) count++;
@@ -381,11 +575,26 @@ final class HostedMachineCoordinator {
         return HostedHudLine.render(getMachineHudLines(maximumLines));
     }
 
+    boolean isUnlimitedWirelessGeneration() {
+        if (!owner.isWirelessMode() || !isGeneratorMode()) return false;
+        for (MTEMultiBlockBase remote : hosted.keySet()) if (HostedNaquadahSupport.isReactor(remote)) return true;
+        return false;
+    }
+
     List<String> getProgressionStatusLines() {
         return HostedHudLine.render(getProgressionHudLines());
     }
     List<HostedHudLine> getMachineHudLines(int maximumLines) {
         List<HostedHudLine> result = new ArrayList<HostedHudLine>();
+        if (isAntimatterMode()) {
+            long stored = 0L;
+            for (AntimatterOutputHatch hatch : owner.getHostedAntimatterHatches()) {
+                if (hatch.isValid() && hatch.getFluid() != null) stored = saturatingAdd(stored, hatch.getFluid().amount);
+            }
+            result.add(HostedHudLine.text("matterblueprints.host.info.antimatter", usableAntimatterCount(),
+                HostedNumberFormatter.format(stored), HostedNumberFormatter.format(antimatterOverflow)));
+            return result;
+        }
         if (isGeneratorMode()) {
             int running = getRunningCount();
             if (running > 0) {
@@ -394,7 +603,7 @@ final class HostedMachineCoordinator {
                         "matterblueprints.host.info.aggregate_generating",
                         running,
                         HostedNumberFormatter.format(energyGeneratedThisTick),
-                        HostedNumberFormatter.format(centralPowerCapacity)));
+                        isUnlimitedWirelessGeneration() ? "∞" : HostedNumberFormatter.format(centralPowerCapacity)));
             } else if (!hosted.isEmpty()) {
                 result.add(
                     HostedHudLine.text(
@@ -462,6 +671,7 @@ final class HostedMachineCoordinator {
             double reduction = 100D * (1D - HostedPlasmaForgeSupport.fuelMultiplier(progression.getPlasmaForgeRuntime()));
             result.add(HostedHudLine.text(prefix + "plasma_discount", String.format(Locale.ROOT, "%.2f", reduction)));
             result.add(HostedHudLine.text(prefix + "plasma_native"));
+            result.add(HostedHudLine.text(prefix + "plasma_matrix", plasmaMatrixCount, plasmaPlainCount));
         }
         int thermal = HostedThermalMachineSupport.kind(remote);
         if (thermal != 0) {
@@ -500,7 +710,8 @@ final class HostedMachineCoordinator {
         }
         if (HostedChemicalPlantSupport.isChemicalPlant(remote)) result.add(HostedHudLine.text(prefix + "chemical"));
         if (HostedSpaceAssemblerSupport.isSpaceAssembler(remote)) result.add(HostedHudLine.text(prefix + "space"));
-        if (isGeneratorMode()) result.add(HostedHudLine.text(prefix + "generator"));
+        if (isGeneratorMode()) result.add(HostedHudLine.text(prefix + (HostedNaquadahSupport.isReactor(remote)
+            ? owner.isWirelessMode() ? "naquadah_wireless" : "naquadah_wired" : "generator")));
     }
 
     private static HostedHudLine state(boolean enabled) {
@@ -543,7 +754,8 @@ final class HostedMachineCoordinator {
             int percent = job.maxProgress <= 0 ? 0 : Math.min(100, job.progress * 100 / job.maxProgress);
             result.add(
                 HostedHudLine.text(
-                    generator ? "matterblueprints.host.info.generator_task" : "matterblueprints.host.info.task",
+                    generator ? "matterblueprints.host.info.generator_task" : job.plasmaMatrix
+                        ? "matterblueprints.host.info.plasma_matrix_task" : "matterblueprints.host.info.task",
                     task,
                     getJobDisplayName(entry.getKey(), job),
                     generator ? "1" : HostedNumberFormatter.format(job.parallels),
@@ -596,6 +808,7 @@ final class HostedMachineCoordinator {
 
     long getActiveEnergyUsage() {
         if (isGeneratorMode()) return energyGeneratedThisTick;
+        if (isAntimatterMode()) return energySpentThisTick;
         HostedJob job = getActiveJob();
         return job == null ? 0 : job.energyUsage;
     }
@@ -657,6 +870,7 @@ final class HostedMachineCoordinator {
     }
 
     private HostedJob getActiveJob() {
+        if (isAntimatterMode()) return antimatterBatch.isActive() ? antimatterBatch : null;
         if (activeRemote != null) {
             HostedJob job = hosted.get(activeRemote);
             if (job != null && job.isActive()) return job;
@@ -666,6 +880,7 @@ final class HostedMachineCoordinator {
     }
 
     private MTEMultiBlockBase getDisplayRemote() {
+        if (isAntimatterMode()) return antimatterLeader;
         if (activeRemote != null) return activeRemote;
         for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
             if (entry.getValue().isActive()) return entry.getKey();
@@ -753,7 +968,52 @@ final class HostedMachineCoordinator {
         }
     }
 
+    private void schedulePlasmaRecipes(long worldTick) {
+        HostedPlasmaForgeSupport.Reservations reserved = HostedPlasmaForgeSupport.reservations(hosted.values());
+        Map<HostedPlasmaForgeSupport.CohortKey, Set<MTEMultiBlockBase>> groups = new java.util.LinkedHashMap<>();
+        plasmaMatrixCount = 0;
+        plasmaPlainCount = 0;
+        for (MTEMultiBlockBase machine : hosted.keySet()) {
+            if (!isUsable(machine)) continue;
+            HostedPlasmaForgeSupport.CohortKey key = HostedPlasmaForgeSupport.configuration(machine);
+            if (key.matrix) plasmaMatrixCount++; else plasmaPlainCount++;
+            if (hosted.get(machine).isActive() || reserved.contains(machineKey(machine))) continue;
+            groups.computeIfAbsent(key, ignored -> Collections.newSetFromMap(
+                new IdentityHashMap<MTEMultiBlockBase, Boolean>())).add(machine);
+        }
+        List<Map.Entry<HostedPlasmaForgeSupport.CohortKey, Set<MTEMultiBlockBase>>> ordered = new ArrayList<>(groups.entrySet());
+        ordered.sort((left, right) -> Boolean.compare(right.getKey().matrix, left.getKey().matrix));
+        boolean started = false;
+        for (Map.Entry<HostedPlasmaForgeSupport.CohortKey, Set<MTEMultiBlockBase>> entry : ordered) {
+            if (getRunningCount() >= com.gtnhblueprints.HostedMilestoneConfig.crossRecipeTasks) break;
+            long power = getAvailableConsumerPowerForNewJob();
+            if (power <= 0) break;
+            Set<MTEMultiBlockBase> members = entry.getValue();
+            MTEMultiBlockBase representative = members.iterator().next();
+            int base = 0;
+            for (MTEMultiBlockBase machine : members) {
+                base = saturatingParallelAdd(base, HostedSpaceAssemblerSupport.getParallelCapacity(machine));
+            }
+            int parallel = progression.applyParallelBonus(Math.max(1, base), hosted.size());
+            if (startPlasmaCohort(representative, members, parallel, power)) started = true;
+        }
+        refreshActiveRemote();
+        scheduleNextRecipeCheck(worldTick, started);
+    }
+
+    private boolean startPlasmaCohort(MTEMultiBlockBase remote, Set<MTEMultiBlockBase> members, int parallel, long power) {
+        HostedJob job = hosted.get(remote);
+        try (HostedPlasmaForgeSupport.Scope ignored = HostedPlasmaForgeSupport.open(remote, job,
+            progression.getPlasmaForgeRuntime())) {
+            if (!startAggregatedRecipe(remote, parallel, null, power, members)) return false;
+            job.plasmaMembers.clear();
+            for (MTEMultiBlockBase member : members) job.plasmaMembers.add(machineKey(member));
+            return true;
+        }
+    }
+
     private void refreshActiveRemote() {
+        if (isAntimatterMode()) { activeRemote = antimatterLeader; return; }
         if (activeRemote != null) {
             HostedJob active = hosted.get(activeRemote);
             if (active != null && active.isActive()) return;
@@ -824,6 +1084,7 @@ final class HostedMachineCoordinator {
         if (remote == null || remote == owner || !remote.isValid() || !remote.mMachine) return false;
         ItemStack remoteController = remote.getStackForm(1);
         if (remoteController == null || !selector.isItemEqual(remoteController)) return false;
+        if (HostedAntimatterSupport.isAntimatter(remote) && !HostedAntimatterSupport.physicalHatchesEmpty(remote)) return false;
         if (isSupportedGenerator(remote)) return getDynamoCapacity(remote) > 0;
         if (HostedSpaceAssemblerSupport.isSpaceAssembler(remote)) {
             return HostedSpaceAssemblerSupport.isConnected(remote) && remote.getMaxInputVoltage() > 0;
@@ -857,6 +1118,13 @@ final class HostedMachineCoordinator {
         if (tile == null || remote.mMaxProgresstime > 0) return;
         String key = machineKey(remote);
         if (!HostedMachineRegistry.claim(remote, owner)) return;
+        if (HostedAntimatterSupport.isAntimatter(remote)) {
+            if (!HostedAntimatterSupport.attach(remote, this::drainAntimatterEnergy, () -> getAntimatterBank(remote),
+                this::usableAntimatterCount, amount -> antimatterStagedOverflow = saturatingAdd(antimatterStagedOverflow, amount))) {
+                HostedMachineRegistry.release(remote, owner);
+                return;
+            }
+        }
         HostedJob restoredJob = pendingJobs.remove(key);
         hosted.put(remote, restoredJob == null ? new HostedJob() : restoredJob);
         if (restoredJob != null && restoredJob.isActive() && !isSupportedGenerator(remote)) activeRemote = remote;
@@ -870,13 +1138,18 @@ final class HostedMachineCoordinator {
     }
 
     private void release(MTEMultiBlockBase remote, Iterator<MTEMultiBlockBase> iterator) {
+        if (remote == antimatterLeader) {
+            captureAntimatterContainment();
+            antimatterLeader = null;
+        }
+        HostedAntimatterSupport.release(remote);
         HostedMachineRegistry.release(remote, owner);
         chemicalPlants.release(remote);
         HostedJob job = hosted.get(remote);
         HostedPlasmaForgeSupport.release(remote, job);
         HostedThermalMachineSupport.release(remote, job);
-        boolean retainAssembly = job != null && job.equivalentAssembly && job.isActive();
-        if (retainAssembly) pendingJobs.put(machineKey(remote), job);
+        boolean retainDeferred = job != null && (job.equivalentAssembly || job.naquadahCycle != null) && job.isActive();
+        if (retainDeferred) pendingJobs.put(machineKey(remote), job);
         else if (job != null) job.restoreToRemote(remote);
         if (remote == activeRemote) {
             activeRemote = null;
@@ -884,7 +1157,7 @@ final class HostedMachineCoordinator {
         runningContext = null;
         iterator.remove();
         persistedClaims.remove(machineKey(remote));
-        if (!retainAssembly) pendingJobs.remove(machineKey(remote));
+        if (!retainDeferred) pendingJobs.remove(machineKey(remote));
         IGregTechTileEntity tile = remote.getBaseMetaTileEntity();
         if (tile != null && remote.isValid()) tile.enableWorking();
     }
@@ -1028,15 +1301,8 @@ final class HostedMachineCoordinator {
             }
         }
         if (HostedPlasmaForgeSupport.isPlasmaForge(remote)) {
-            if (!HostedPlasmaForgeSupport.matches(remote, hosted.keySet())) {
-                statusKey = "matterblueprints.host.status.plasma_configuration";
-                return false;
-            }
-            try (HostedPlasmaForgeSupport.Scope ignored = HostedPlasmaForgeSupport.open(remote, hosted.get(remote),
-                progression.getPlasmaForgeRuntime())) {
-                // Native matching understands discounted fuel and alternate catalyst selection.
-                return startAggregatedRecipe(remote, parallelCapacity, null, availablePower);
-            }
+            return startPlasmaCohort(remote, Collections.singleton(remote),
+                progression.applyParallelBonus(HostedSpaceAssemblerSupport.getParallelCapacity(remote), hosted.size()), availablePower);
         }
         if (!HostedChemicalPlantSupport.isChemicalPlant(remote)) {
             return startAggregatedRecipe(remote, parallelCapacity, preferred, availablePower);
@@ -1061,6 +1327,11 @@ final class HostedMachineCoordinator {
 
     private boolean startAggregatedRecipe(MTEMultiBlockBase remote, int parallelCapacity, GTRecipe preferred,
         long availablePower) {
+        return startAggregatedRecipe(remote, parallelCapacity, preferred, availablePower, hosted.keySet());
+    }
+
+    private boolean startAggregatedRecipe(MTEMultiBlockBase remote, int parallelCapacity, GTRecipe preferred,
+        long availablePower, Set<MTEMultiBlockBase> members) {
         HatchSnapshot snapshot = new HatchSnapshot(remote);
         snapshot.useOwnerIO(owner, remote);
         VoltageTierSnapshot voltageSnapshot = new VoltageTierSnapshot(remote, progression.hasVoltageExtension());
@@ -1074,11 +1345,12 @@ final class HostedMachineCoordinator {
         }
         AggregateCapacitySnapshot capacitySnapshot = new AggregateCapacitySnapshot(
             remote,
-            hosted.keySet(),
+            members,
             admittedParallel,
             progression.getNativePowerBudget(availablePower,
                 10000 - (remote.getIdealStatus() - remote.getRepairStatus()) * 1000),
-            HostedThermalMachineSupport.kind(remote) != 0 && progression.getEnergyLevel() >= 5,
+            (HostedThermalMachineSupport.kind(remote) != 0 && progression.getEnergyLevel() >= 5)
+                || (HostedPlasmaForgeSupport.isPlasmaForge(remote) && hosted.get(remote).plasmaMatrix),
             progression.getConsumerDurationMultiplier(), owner.isBatchModeEnabled());
         RecipePrioritySnapshot prioritySnapshot = new RecipePrioritySnapshot(remote, preferred);
         boolean restoreBatchMode = remote.supportsBatchMode();
@@ -1108,7 +1380,7 @@ final class HostedMachineCoordinator {
             HostedJob job = hosted.get(remote);
             if (job != null) {
                 long completed = getCompletedRecipeCount(remote);
-                job.captureFromRemote(remote, hosted.size(), completed, getActualEnergyUsage(remote));
+                job.captureFromRemote(remote, members.size(), completed, getActualEnergyUsage(remote));
                 job.reservedParallel = Math.min(admittedParallel, job.parallels);
                 job.recipeKey = prioritySnapshot.getSelectedRecipeKey(remote);
                 applyConsumerBonuses(job, capacitySnapshot.processingSettings != null);
@@ -1212,7 +1484,7 @@ final class HostedMachineCoordinator {
             }
         }
         if (energyGeneratedThisTick > 0) {
-            progression.recordGeneratorTick(energyGeneratedThisTick, generatorsAdvancedThisTick);
+            progression.recordGeneratorTick(generatedEnergyExact, generatorsAdvancedThisTick);
         }
     }
 
@@ -1264,10 +1536,22 @@ final class HostedMachineCoordinator {
         job.generatorAuxiliaryCycle = -1;
         job.generatorAuxiliaryOutput = 0;
         job.maxProgress = progression.applyGeneratorDuration(job.maxProgress, hosted.size());
+        if (HostedNaquadahSupport.isReactor(remote)) {
+            job.naquadahCycle = new HostedNaquadahCycle(generatorBaseDuration, job.maxProgress, 0);
+            job.maxProgress = owner.isWirelessMode() ? 1200 : job.maxProgress;
+        }
         return true;
     }
 
     private void advanceGenerator(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
+        if (HostedNaquadahSupport.isReactor(remote) && job.generatorBaseDuration > 0) {
+            if (job.naquadahCycle == null) {
+                job.naquadahCycle = new HostedNaquadahCycle(job.generatorBaseDuration, job.maxProgress, job.progress);
+                job.progress = 0;
+            }
+            advanceNaquadah(remote, job, worldTick);
+            return;
+        }
         long expectedOutput = REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote);
         long reservedCapacity = expectedOutput > 0 ? expectedOutput : getDynamoCapacity(remote);
         if (reservedCapacity <= 0
@@ -1303,6 +1587,7 @@ final class HostedMachineCoordinator {
                 return;
             }
             energyGeneratedThisTick = saturatingAdd(energyGeneratedThisTick, accepted);
+            generatedEnergyExact = generatedEnergyExact.add(BigInteger.valueOf(accepted));
             generatorsAdvancedThisTick++;
             job.energyUsage = accepted;
 
@@ -1322,6 +1607,73 @@ final class HostedMachineCoordinator {
         }
         if (!job.isActive() || job.progress < job.maxProgress) return;
         finishGeneratorRecipe(remote, job, worldTick);
+    }
+
+    private void advanceNaquadah(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
+        HostedNaquadahCycle cycle = job.naquadahCycle;
+        if (cycle.finished()) { finishGeneratorRecipe(remote, job, worldTick); return; }
+        job.exposeProgressToRemote(remote);
+        HatchSnapshot io = new HatchSnapshot(remote);
+        DynamoEnergySnapshot dynamos = new DynamoEnergySnapshot(remote);
+        try {
+            if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
+            if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
+            io.useOwnerIO(owner, remote);
+            // Settle a bounded number of original auxiliary periods. Paid energy is persisted even if
+            // a later period must wait for liquid air. No wireless output is credited while settling.
+            for (int i = 0; i < 64 && !cycle.ready(); i++) {
+                int index = cycle.auxiliaryIndex();
+                long output = index <= job.generatorAuxiliaryCycle ? job.generatorAuxiliaryOutput : 0;
+                if (output <= 0) output = HostedNaquadahSupport.charge(remote,
+                    () -> REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote));
+                if (output <= 0) {
+                    statusKey = "matterblueprints.host.status.naquadah_fuel";
+                    return;
+                }
+                job.generatorAuxiliaryCycle = index;
+                job.generatorAuxiliaryOutput = output;
+                cycle.settle(output);
+            }
+            if (!cycle.ready()) {
+                statusKey = "matterblueprints.host.status.naquadah_fuel";
+                return;
+            }
+            cycle.configure(owner.isWirelessMode());
+            long remoteCapacity = owner.isWirelessMode() ? getDynamoCapacity(remote)
+                : Math.min(getDynamoCapacity(remote), centralPowerCapacity);
+            job.maxProgress = (int) Math.min(Integer.MAX_VALUE,
+                (long) job.progress + Math.max(1, cycle.remainingTicks(remoteCapacity)));
+            BigInteger amount = cycle.nextOutput(remoteCapacity);
+            if (amount.signum() == 0 && !owner.isWirelessMode()) return;
+            if (owner.isWirelessMode()) {
+                if (!owner.canGenerateWirelessly() || (amount.signum() > 0 && !owner.generateWirelessEnergy(amount))) return;
+            } else {
+                long power = amount.longValueExact();
+                long free = Math.min(getCentralDynamoFreeCapacity(), Math.max(0L, centralPowerCapacity - energyGeneratedThisTick));
+                if (free < power) {
+                    statusKey = "matterblueprints.host.status.dynamo_capacity";
+                    return;
+                }
+                long accepted = injectCentralEnergy(power);
+                if (accepted <= 0) return;
+                amount = BigInteger.valueOf(accepted);
+            }
+            cycle.accept(amount);
+            energyGeneratedThisTick = saturatingAdd(energyGeneratedThisTick, HostedNaquadahCycle.displayPower(amount));
+            generatedEnergyExact = generatedEnergyExact.add(amount);
+            generatorsAdvancedThisTick++;
+            job.energyUsage = HostedNaquadahCycle.displayPower(amount);
+            job.progress = (int) Math.min(Integer.MAX_VALUE - 1L, (long) job.progress + 1);
+            if (!remote.polluteEnvironment(remote.getPollutionPerTick(remote.getControllerSlot()))) {
+                remote.stopMachine();
+                job.clear();
+            }
+        } finally {
+            dynamos.restore();
+            io.restore(remote);
+            job.hideProgressFromRemote(remote);
+        }
+        if (cycle.finished()) finishGeneratorRecipe(remote, job, worldTick);
     }
 
     private void finishGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
@@ -1571,6 +1923,7 @@ final class HostedMachineCoordinator {
                 for (MTEMultiBlockBase remote : hosted.keySet()) {
                     centralPowerCapacity = saturatingAdd(centralPowerCapacity, getDynamoCapacity(remote));
                 }
+                if (isUnlimitedWirelessGeneration()) centralPowerCapacity = Long.MAX_VALUE;
             }
         } else {
             centralEnergyHatches.addAll(owner.getExoticAndNormalEnergyHatchList());
@@ -2363,6 +2716,10 @@ final class HostedMachineCoordinator {
     }
 
     static final class HostedJob {
+        boolean antimatterCycle;
+        boolean plasmaMatrix;
+        final List<String> plasmaMembers = new ArrayList<>();
+        HostedNaquadahCycle naquadahCycle;
         int generatorBaseDuration;
         int generatorAuxiliaryCycle = -1;
         long generatorAuxiliaryOutput;
@@ -2425,6 +2782,11 @@ final class HostedMachineCoordinator {
         }
 
         void restoreToRemote(MTEMultiBlockBase remote) {
+            if (naquadahCycle != null) {
+                // Keep paid energy in host storage; the native controller cannot resume this clock.
+                hideProgressFromRemote(remote);
+                return;
+            }
             if (equivalentAssembly) throw new IllegalStateException("Equivalent assembly jobs must remain in host storage");
             HostedThermalMachineSupport.release(remote, this);
             if (!isActive()) return;
@@ -2438,6 +2800,10 @@ final class HostedMachineCoordinator {
         }
 
         void clear() {
+            antimatterCycle = false;
+            plasmaMatrix = false;
+            plasmaMembers.clear();
+            naquadahCycle = null;
             generatorBaseDuration = 0;
             generatorAuxiliaryCycle = -1;
             generatorAuxiliaryOutput = 0;
@@ -2470,6 +2836,12 @@ final class HostedMachineCoordinator {
         }
 
         void writeToNBT(NBTTagCompound tag) {
+            tag.setBoolean("antimatterCycle", antimatterCycle);
+            tag.setBoolean("plasmaMatrix", plasmaMatrix);
+            NBTTagList members = new NBTTagList();
+            for (String member : plasmaMembers) members.appendTag(new NBTTagString(member));
+            tag.setTag("plasmaMembers", members);
+            if (naquadahCycle != null) tag.setTag("naquadahCycle", naquadahCycle.write());
             tag.setInteger("generatorBaseDuration", generatorBaseDuration);
             tag.setInteger("generatorAuxiliaryCycle", generatorAuxiliaryCycle);
             tag.setLong("generatorAuxiliaryOutput", generatorAuxiliaryOutput);
@@ -2497,6 +2869,11 @@ final class HostedMachineCoordinator {
 
         static HostedJob readFromNBT(NBTTagCompound tag) {
             HostedJob job = new HostedJob();
+            job.antimatterCycle = tag.getBoolean("antimatterCycle");
+            job.plasmaMatrix = tag.getBoolean("plasmaMatrix");
+            NBTTagList members = tag.getTagList("plasmaMembers", 8);
+            for (int i = 0; i < members.tagCount(); i++) job.plasmaMembers.add(members.getStringTagAt(i));
+            if (tag.hasKey("naquadahCycle")) job.naquadahCycle = HostedNaquadahCycle.read(tag.getCompoundTag("naquadahCycle"));
             job.generatorBaseDuration = Math.max(0, tag.getInteger("generatorBaseDuration"));
             job.generatorAuxiliaryCycle = tag.hasKey("generatorAuxiliaryCycle")
                 ? Math.max(-1, tag.getInteger("generatorAuxiliaryCycle")) : -1;

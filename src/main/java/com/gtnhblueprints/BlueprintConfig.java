@@ -12,6 +12,10 @@ public final class BlueprintConfig {
     public static int maxPreviewBlocks = 50_000;
     public static int previewUpdateIntervalMs = 150;
     public static int hostedMachineControllerId = 32600;
+    public static int quantizedMEInputBusId = 32601;
+    public static int quantizedMEInputHatchId = 32602;
+    public static int meInputAssemblyId = 32603;
+    public static int meOutputAssemblyId = 32604;
     public static int hostedMachineScanIntervalTicks = 100;
     public static int hostedMachineRecipeCheckIntervalTicks = 5;
 
@@ -49,6 +53,10 @@ public final class BlueprintConfig {
             1,
             32766,
             "GregTech MetaTileEntity ID used by the Multiblock Machine Host controller. Changing this in an existing world breaks placed controllers.");
+        quantizedMEInputBusId = config.getInt("quantizedMEInputBusId", "machines", quantizedMEInputBusId, 1, 32766, "MetaTileEntity ID for the quantified ME item input bus.");
+        quantizedMEInputHatchId = config.getInt("quantizedMEInputHatchId", "machines", quantizedMEInputHatchId, 1, 32766, "MetaTileEntity ID for the quantified ME fluid input hatch.");
+        meInputAssemblyId = config.getInt("meInputAssemblyId", "machines", meInputAssemblyId, 1, 32766, "MetaTileEntity ID for the manually marked combined ME input assembly.");
+        meOutputAssemblyId = config.getInt("meOutputAssemblyId", "machines", meOutputAssemblyId, 1, 32766, "MetaTileEntity ID for the combined ME output assembly.");
         hostedMachineScanIntervalTicks = config.getInt(
             "hostedMachineScanIntervalTicks",
             "machines",

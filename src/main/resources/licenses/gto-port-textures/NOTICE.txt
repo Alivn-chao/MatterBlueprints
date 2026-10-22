@@ -1,0 +1,21 @@
+Required Notice: Copyright GregTech Odyssey (https://github.com/GregTech-Odyssey)
+
+The unmodified overlays under assets/matterblueprints/textures/blocks/ports originate from:
+
+GregTech Odyssey's GregTech-Modern fork (branch gto), LGPL-3.0:
+https://github.com/GregTech-Odyssey/GregTech-Modern
+src/main/resources/assets/gtceu/textures/block/overlay/appeng/
+  me_input_bus.png, me_input_hatch.png, me_buffer_hatch.png and its animation metadata.
+src/main/resources/assets/gtceu/textures/block/overlay/machine/overlay_color.png
+Copies of LGPL-3.0 and GPL-3.0 are included here.
+
+GregTech Odyssey GTOCore-Main (branch 0.6.0), non-code assets CC BY-NC-SA 4.0:
+https://github.com/GregTech-Odyssey/GTOCore-Main
+src/main/resources/assets/gtmthings/textures/block/overlay/appeng/me_output_bus.png
+  -> me_dual_output.png (renamed; image unchanged).
+Copyright GregTech Odyssey and respective asset contributors.
+License: https://creativecommons.org/licenses/by-nc-sa/4.0/
+License statement: https://github.com/GregTech-Odyssey/GregTech-Odyssey#license
+The CC BY-NC-SA license applies to this texture and its adaptations, not unrelated code.
+
+Source PNGs are distributed unchanged in this jar and source tree. No GTOCore code is copied.

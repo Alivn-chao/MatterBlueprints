@@ -83,6 +83,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     private final HostedMachineCoordinator coordinator = new HostedMachineCoordinator(this);
     private final ArrayList<MTEHatchCatalysts> catalystHatches = new ArrayList<MTEHatchCatalysts>();
     private final ArrayList<gregtech.api.metatileentity.implementations.MTEHatchDataAccess> dataHatches = new ArrayList<>();
+    private final List<goodgenerator.blocks.tileEntity.AntimatterOutputHatch> antimatterHatches = new ArrayList<>();
     private int casingCount;
     private int guiHostedProgress;
     private int guiHostedMaxProgress;
@@ -115,6 +116,12 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
                 .addElement(
                     'H',
                     ofChain(
+                        buildHatchAdder(MTEHostedMachineController.class)
+                            .hatchId(MetaTileEntityIDs.AntimatterHatch.ID)
+                            .adder(MTEHostedMachineController::addAntimatterHatch)
+                            .casingIndex(ModBlocks.HOSTED_HATCH_CASING_TEXTURE_ID)
+                            .hint(1)
+                            .build(),
                         buildHatchAdder(MTEHostedMachineController.class)
                             .hatchId(MetaTileEntityIDs.DATA_ACCESS_HATCH.ID)
                             .adder(MTEHostedMachineController::addDataHatch)
@@ -156,6 +163,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         casingCount = 0;
         catalystHatches.clear();
         dataHatches.clear();
+        antimatterHatches.clear();
         if (!checkPiece(STRUCTURE_PIECE, OFFSET_X, OFFSET_Y, OFFSET_Z, errors)) return;
         checkCasingMin(errors, casingCount, MINIMUM_CASINGS);
         checkHasAnyInput(errors);
@@ -245,6 +253,12 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         return WirelessEnergyBuffer.deposit(account, amount, WIRELESS_LEDGER);
     }
 
+    boolean generateWirelessEnergy(java.math.BigInteger amount) {
+        if (!canGenerateWirelessly() || amount.signum() < 0) return false;
+        UUID account = SpaceProjectManager.getLeader(getBaseMetaTileEntity().getOwnerUuid());
+        return WirelessNetworkManager.addEUToGlobalEnergyMap(account, amount);
+    }
+
     private boolean refundWirelessEnergy() {
         if (wirelessBuffer.getStored() == 0) return true;
         boolean refunded = wirelessBuffer.refund(WIRELESS_LEDGER);
@@ -273,6 +287,21 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         if (!dataHatches.contains(hatch)) dataHatches.add(hatch);
         addIfSmartInput(hatch);
         return true;
+    }
+
+    private boolean addAntimatterHatch(IGregTechTileEntity tile, int textureIndex) {
+        if (tile == null || !(tile.getMetaTileEntity() instanceof goodgenerator.blocks.tileEntity.AntimatterOutputHatch)) return false;
+        goodgenerator.blocks.tileEntity.AntimatterOutputHatch hatch =
+            (goodgenerator.blocks.tileEntity.AntimatterOutputHatch) tile.getMetaTileEntity();
+        hatch.updateTexture(textureIndex);
+        hatch.updateCraftingIcon(getMachineCraftingIcon());
+        if (!antimatterHatches.contains(hatch)) antimatterHatches.add(hatch);
+        if (!mOutputHatches.contains(hatch)) mOutputHatches.add(hatch);
+        return true;
+    }
+
+    List<goodgenerator.blocks.tileEntity.AntimatterOutputHatch> getHostedAntimatterHatches() {
+        return antimatterHatches;
     }
 
     List<gregtech.api.util.GTRecipe.RecipeAssemblyLine> getHostedAssemblyRecipes() {
@@ -420,6 +449,12 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         tag.setLong("mbHostWirelessEU", wirelessBuffer.getStored());
         if (wirelessBuffer.getAccount() != null) tag.setString("mbHostWirelessAccount", wirelessBuffer.getAccount().toString());
         else tag.removeTag("mbHostWirelessAccount");
+    }
+
+    @Override
+    public void setItemNBT(NBTTagCompound tag) {
+        super.setItemNBT(tag);
+        coordinator.writeMilestonesToItem(tag);
     }
 
     @Override
@@ -589,6 +624,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         tag.setLong("mbHostPowerCapacity", coordinator.getCentralPowerCapacity());
         tag.setLong("mbHostVoltage", coordinator.getHudVoltage());
         tag.setBoolean("mbHostGeneratorMode", coordinator.isGeneratorMode());
+        tag.setBoolean("mbHostUnlimitedGeneration", coordinator.isUnlimitedWirelessGeneration());
         tag.setBoolean("mbHostWirelessMode", isWirelessMode());
         tag.setLong("mbHostWirelessBuffer", wirelessBuffer.getStored());
         tag.setString("mbHostStatus", coordinator.getStatusKey());
@@ -641,14 +677,16 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         long voltage = tag.getLong("mbHostVoltage");
         if (voltage > 0) {
             int tier = Math.min(gregtech.api.enums.GTValues.VN.length - 1, gregtech.api.util.GTUtility.getTier(voltage));
-            boolean unlimited = tag.getBoolean("mbHostWirelessMode") && !tag.getBoolean("mbHostGeneratorMode");
+            boolean unlimited = tag.getBoolean("mbHostWirelessMode")
+                && (!tag.getBoolean("mbHostGeneratorMode") || tag.getBoolean("mbHostUnlimitedGeneration"));
             tooltip.add(EnumChatFormatting.GOLD + StatCollector.translateToLocalFormatted(
                 "matterblueprints.host.hud.amps", HostedNumberFormatter.amperage(tag.getLong("mbHostPowerUsed"), voltage),
                 unlimited ? "∞" : HostedNumberFormatter.amperage(tag.getLong("mbHostPowerCapacity"), voltage),
                 gregtech.api.enums.GTValues.VN[tier], HostedNumberFormatter.format(voltage)));
             if (tag.getBoolean("mbHostWirelessMode")) tooltip.add(EnumChatFormatting.GRAY
                 + StatCollector.translateToLocal("matterblueprints.host.hud."
-                    + (unlimited ? "wireless_limit" : "wireless_generation_limit")));
+                    + (tag.getBoolean("mbHostUnlimitedGeneration") ? "naquadah_wireless"
+                        : unlimited ? "wireless_limit" : "wireless_generation_limit")));
         }
         if (tag.getBoolean("mbHostWirelessMode") && !tag.getBoolean("mbHostGeneratorMode")) {
             tooltip.add(StatCollector.translateToLocalFormatted(

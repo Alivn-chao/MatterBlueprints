@@ -102,6 +102,62 @@ public class HostedPlasmaForgeCompatibilityTest {
         assertEquals("gregtech/api/logic/ProcessingLogic", read(name + "$2").superName);
     }
 
+    @Test
+    void hostedMatrixPricingKeepsWarmupDiscountWithoutAdditionalCatalystOrResidue() throws Exception {
+        AssemblyTestBootstrap.initialize();
+        java.lang.reflect.Field singleton = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        singleton.setAccessible(true);
+        sun.misc.Unsafe unsafe = (sun.misc.Unsafe) singleton.get(null);
+        Class<?> type = nativePricingClass();
+        Object forge = unsafe.allocateInstance(type);
+        java.lang.reflect.Field fuels = type.getDeclaredField("valid_fuels");
+        fuels.setAccessible(true);
+        fuels.set(null, new net.minecraftforge.fluids.FluidStack[] {
+            new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.WATER, 1) });
+        java.lang.reflect.Field runtime = type.getDeclaredField("running_time");
+        runtime.setAccessible(true);
+        java.lang.reflect.Field convergence = type.getDeclaredField("convergence");
+        convergence.setAccessible(true);
+        convergence.setBoolean(forge, false); // Matrix scope suppresses native surcharge; OC is enabled separately.
+        java.lang.reflect.Method adjust = type.getDeclaredMethod("recipeAfterAdjustments",
+            gregtech.api.util.GTRecipe.class, net.minecraftforge.fluids.FluidStack[].class);
+        adjust.setAccessible(true);
+        java.lang.reflect.Field extra = type.getDeclaredField("extraCatalystNeeded");
+        extra.setAccessible(true);
+        for (boolean hasCatalyst : new boolean[] { true, false }) {
+            gregtech.api.util.GTRecipe recipe = (gregtech.api.util.GTRecipe) unsafe.allocateInstance(gregtech.api.util.GTRecipe.class);
+            recipe.mInputs = new net.minecraft.item.ItemStack[0];
+            recipe.mOutputs = new net.minecraft.item.ItemStack[0];
+            recipe.mFluidInputs = hasCatalyst ? new net.minecraftforge.fluids.FluidStack[] {
+                new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.WATER, 10000),
+                new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.LAVA, 100) }
+                : new net.minecraftforge.fluids.FluidStack[] {
+                    new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.LAVA, 100) };
+            recipe.mFluidOutputs = new net.minecraftforge.fluids.FluidStack[0];
+            recipe.mInputChances = new int[0];
+            recipe.mOutputChances = new int[0];
+            recipe.mFluidInputChances = new int[recipe.mFluidInputs.length];
+            java.util.Arrays.fill(recipe.mFluidInputChances, 10000);
+            recipe.mFluidOutputChances = new int[0];
+            long[] times = { 0, 288000, 576000 };
+            int[] costs = { 10000, 7500, 5000 };
+            for (int i = 0; i < times.length; i++) {
+                runtime.setLong(forge, times[i]);
+                extra.setInt(forge, 999999); // A previous native convergence calculation must not leak its charge.
+                net.minecraftforge.fluids.FluidStack[] stock = {
+                    new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.WATER, 20000),
+                    new net.minecraftforge.fluids.FluidStack(net.minecraftforge.fluids.FluidRegistry.LAVA, 200) };
+                gregtech.api.util.GTRecipe priced = (gregtech.api.util.GTRecipe) adjust.invoke(forge, recipe, stock);
+                assertEquals(recipe.mFluidInputs.length, priced.mFluidInputs.length);
+                assertEquals(0, priced.mFluidOutputs.length);
+                assertEquals(0, extra.getInt(forge));
+                priced.consumeInput(1, stock, new net.minecraft.item.ItemStack[0]);
+                assertEquals(hasCatalyst ? 20000 - costs[i] : 20000, stock[0].amount);
+                assertEquals(100, stock[1].amount);
+            }
+        }
+    }
+
     private Class<?> nativePricingClass() throws Exception {
         ClassNode source = read("gregtech/common/tileentities/machines/multi/MTEPlasmaForge");
         ClassNode pricing = new ClassNode();

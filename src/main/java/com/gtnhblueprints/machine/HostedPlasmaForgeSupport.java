@@ -2,7 +2,13 @@ package com.gtnhblueprints.machine;
 
 import java.lang.reflect.Field;
 import java.math.BigInteger;
+import java.util.Objects;
+import java.util.HashSet;
+import java.util.Set;
 
+import net.minecraft.item.ItemStack;
+
+import gregtech.api.enums.ItemList;
 import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 import gregtech.common.tileentities.machines.multi.MTEPlasmaForge;
 
@@ -23,17 +29,67 @@ final class HostedPlasmaForgeSupport {
     }
 
     static boolean matches(MTEMultiBlockBase representative, Iterable<MTEMultiBlockBase> machines) {
+        CohortKey key = configuration(representative);
+        for (MTEMultiBlockBase machine : machines) if (!isPlasmaForge(machine) || !key.equals(configuration(machine))) return false;
+        return true;
+    }
+
+    static boolean hasMatrix(MTEMultiBlockBase machine) {
+        ItemStack stack = machine.getControllerSlot();
+        return stack != null && stack.stackSize > 0 && ItemList.Transdimensional_Alignment_Matrix.hasBeenSet()
+            && isMatrix(stack, ItemList.Transdimensional_Alignment_Matrix.get(1));
+    }
+
+    static boolean isMatrix(ItemStack stack, ItemStack matrix) {
+        return stack != null && stack.stackSize > 0 && matrix != null && stack.isItemEqual(matrix);
+    }
+
+    static CohortKey configuration(MTEMultiBlockBase machine) {
         try {
-            for (MTEMultiBlockBase machine : machines) {
-                if (!isPlasmaForge(machine) || HEAT.getInt(machine) != HEAT.getInt(representative)
-                    || CONVERGENCE.getBoolean(machine) != CONVERGENCE.getBoolean(representative)
-                    || CATALYST.getInt(machine) != CATALYST.getInt(representative)
-                    || machine.getMaxInputVoltage() != representative.getMaxInputVoltage()) return false;
-            }
-            return true;
-        } catch (IllegalAccessException error) {
-            throw new IllegalStateException("Cannot read plasma forge configuration", error);
+            boolean matrix = hasMatrix(machine);
+            return new CohortKey(matrix, HEAT.getInt(machine), CATALYST.getInt(machine),
+                !matrix && CONVERGENCE.getBoolean(machine), machine.getMaxInputVoltage(),
+                gregtech.api.util.ExoticEnergyInputHelper.getTotalEuMulti(machine.getExoticAndNormalEnergyHatchList()));
+        } catch (IllegalAccessException error) { throw new IllegalStateException("Cannot read plasma forge configuration", error); }
+    }
+
+    static final class CohortKey {
+        final boolean matrix;
+        private final int heat, catalyst;
+        private final boolean convergence;
+        private final long voltage, power;
+
+        CohortKey(boolean matrix, int heat, int catalyst, boolean convergence, long voltage, long power) {
+            this.matrix = matrix;
+            this.heat = heat;
+            this.catalyst = catalyst;
+            this.convergence = convergence;
+            this.voltage = voltage;
+            this.power = power;
         }
+        @Override public boolean equals(Object object) {
+            if (!(object instanceof CohortKey)) return false;
+            CohortKey other = (CohortKey) object;
+            return matrix == other.matrix && heat == other.heat && catalyst == other.catalyst
+                && convergence == other.convergence && voltage == other.voltage && power == other.power;
+        }
+        @Override public int hashCode() { return Objects.hash(matrix, heat, catalyst, convergence, voltage, power); }
+    }
+
+    static Reservations reservations(Iterable<HostedMachineCoordinator.HostedJob> jobs) {
+        Reservations result = new Reservations();
+        for (HostedMachineCoordinator.HostedJob job : jobs) {
+            if (!job.isActive()) continue;
+            if (job.plasmaMembers.isEmpty()) result.legacyBank = true;
+            result.members.addAll(job.plasmaMembers);
+        }
+        return result;
+    }
+
+    static final class Reservations {
+        private boolean legacyBank;
+        private final Set<String> members = new HashSet<>();
+        boolean contains(String member) { return legacyBank || members.contains(member); }
     }
 
     static Scope open(MTEMultiBlockBase remote, HostedMachineCoordinator.HostedJob job, long effectiveRuntime) {
@@ -77,6 +133,7 @@ final class HostedPlasmaForgeSupport {
         private final long runtime;
         private final double discount;
         private final boolean recipeLocked;
+        private final boolean convergence;
 
         Scope(MTEMultiBlockBase remote, HostedMachineCoordinator.HostedJob job, long effectiveRuntime) {
             this.remote = remote;
@@ -84,6 +141,11 @@ final class HostedPlasmaForgeSupport {
             try {
                 runtime = RUNTIME.getLong(remote);
                 discount = DISCOUNT.getDouble(remote);
+                convergence = CONVERGENCE.getBoolean(remote);
+                job.plasmaMatrix = hasMatrix(remote);
+                // Hosted matrix OC is supplied by ProcessingLogic, independently of native convergence.
+                // Keep native heat checks and discounted base catalyst, but suppress the surcharge path.
+                if (job.plasmaMatrix) CONVERGENCE.setBoolean(remote, false);
                 // Old per-job/native counters can contain speculative recipe duration. Never import them.
                 job.plasmaRuntime = Math.min(FULL_DISCOUNT_TICKS, Math.max(0L, effectiveRuntime));
                 RUNTIME.setLong(remote, job.plasmaRuntime);
@@ -103,6 +165,7 @@ final class HostedPlasmaForgeSupport {
                 // only the authoritative productive host clock determines the next batch's price.
                 RUNTIME.setLong(remote, runtime);
                 DISCOUNT.setDouble(remote, discount);
+                CONVERGENCE.setBoolean(remote, convergence);
             } catch (IllegalAccessException error) {
                 throw new IllegalStateException("Cannot restore plasma forge fuel state", error);
             } finally {

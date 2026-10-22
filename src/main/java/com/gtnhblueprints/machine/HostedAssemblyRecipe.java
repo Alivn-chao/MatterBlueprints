@@ -31,6 +31,9 @@ final class HostedAssemblyRecipe extends GTRecipe {
 
     @Override
     public void consumeInput(int parallel, FluidStack[] fluids, ItemStack... items) {
+        // Native ParallelHelper calls this with zero when batch mode finds no additional runs.
+        // Zero is a successful no-op, not evidence that the already reserved inputs changed.
+        if (parallel == 0) return;
         HostedAssemblyInputs.Plan plan = plan(items, fluids, parallel);
         if (plan == null) throw new IllegalStateException("Assembly inputs changed before commit");
         plan.consume(items, fluids);

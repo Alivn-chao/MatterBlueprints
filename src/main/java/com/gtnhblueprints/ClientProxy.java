@@ -10,6 +10,7 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.world.World;
 
 import com.gtnhblueprints.client.ClientBlueprintController;
+import com.gtnhblueprints.client.ClientCrossDimensionMovePreview;
 import com.gtnhblueprints.client.LocalBlueprintCommand;
 import com.gtnhblueprints.client.gui.GuiBlueprintConfigurator;
 import com.gtnhblueprints.inventory.ContainerBlueprintConfigurator;
@@ -31,6 +32,7 @@ public final class ClientProxy extends CommonProxy {
         BlueprintNetwork.initializeClient();
         ClientCommandHandler.instance.registerCommand(new LocalBlueprintCommand());
         MinecraftForge.EVENT_BUS.register(ClientBlueprintController.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ClientCrossDimensionMovePreview.INSTANCE);
         FMLCommonHandler.instance().bus().register(ClientBlueprintController.INSTANCE);
     }
 

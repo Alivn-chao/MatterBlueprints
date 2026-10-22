@@ -2,7 +2,7 @@
 
 面向 **GT New Horizons 2.9.0-beta-3**、**GTNewHorizonsCoreMod 2.9.61** 与 **Matter Manipulator 0.1.55-GTNH** 的蓝图附属模组首阶段版本。
 
-当前版本为 **0.4.1**，面向上述 beta-3 环境，修复托管硅岩反应堆的空间激发液和时间冷却液未享受持续时间加成的问题，详见 [0.4.1 更新说明](docs/0.4.1-naquadah-fuel.md)。保留真空管、框架及装配线修复，见 [0.4.0 更新说明](docs/0.4.0-blueprint-compatibility.md)。历史 RC-1 构建记录见 [RC-1 兼容说明](docs/rc1-compatibility.md)。
+当前版本为 **0.4.9**，面向上述 beta-3 环境：加入半稳定反物质序列器统一托管、原生虚拟库存的 ME 数量标记输入仓室和二合一输入/输出总成，详见 [0.4.9 更新说明](docs/0.4.9-antimatter-me-ports.md)。上一版修复托管装配线开启批处理时零次追加扣料导致的崩溃关机，详见 [0.4.8 更新说明](docs/0.4.8-assembly-zero-batch.md)。新增 MM 原生移动模式的跨维度搬运，源维度标记 A/B、目标维度标记 C 后执行，详见 [0.4.7 更新说明](docs/0.4.7-cross-dimension-move.md)。绑定器改为原生 16×16 像素材质，保留呼吸动画和 LabPBR 贴图，详见 [0.4.6 更新说明](docs/0.4.6-binder-16px.md)。托管绑定器采用 C 款连接钳与青色呼吸灯，附带 LabPBR 材质，详见 [0.4.5 更新说明](docs/0.4.5-binder-texture.md)。托管中心拆下后，控制器物品会保留累计里程碑与永久燃料减免解锁，详见 [0.4.4 更新说明](docs/0.4.4-portable-milestones.md)。保留 [矩阵煅炉混合托管](docs/0.4.3-plasma-matrix.md)、[硅岩发电功率与时长换算](docs/0.4.2-naquadah-output.md)、[时空耗料修复](docs/0.4.1-naquadah-fuel.md)、[真空管、框架及装配线修复](docs/0.4.0-blueprint-compatibility.md)。历史 RC-1 构建记录见 [RC-1 兼容说明](docs/rc1-compatibility.md)。
 
 当前修正版已接入真实批处理与不足 1 tick 的超频收益，详见 [批处理与超频说明](docs/batch-subtick-hosting.md)。
 

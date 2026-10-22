@@ -151,6 +151,66 @@ class HostedAssemblyRecipeTest {
     }
 
     @Test
+    void batchWithExactlyOneShieldingPlateRecipeDoesNotFailOnZeroExtraRuns() throws Exception {
+        assertExactBatchWithoutExtraRuns(61_440, 1_000, 1_152);
+    }
+
+    @Test
+    void batchWithExactlyOneHighVoltageRecipeDoesNotFailOnZeroExtraRuns() throws Exception {
+        assertExactBatchWithoutExtraRuns(7_864_320, 400, 256_000);
+    }
+
+    @Test
+    void zeroConsumptionIsANoOpEvenWithNoRemainingInputs() throws Exception {
+        HostedAssemblyRecipe recipe = shortRecipe();
+        assertDoesNotThrow(() -> recipe.consumeInput(0, new FluidStack[0], new ItemStack[0]));
+    }
+
+    @Test
+    void positiveConsumptionStillRejectsInsufficientInputsWithoutPartialRemoval() throws Exception {
+        HostedAssemblyRecipe recipe = shortRecipe();
+        ItemStack[] stock = { new ItemStack(net.minecraft.init.Items.iron_ingot) };
+        assertThrows(IllegalStateException.class, () -> recipe.consumeInput(2, new FluidStack[0], stock));
+        assertEquals(1, stock[0].stackSize);
+    }
+
+    private void assertExactBatchWithoutExtraRuns(int eut, int duration, int fluidAmount) throws Exception {
+        ItemStack[] required = {
+            new ItemStack(net.minecraft.init.Items.iron_ingot, 2),
+            new ItemStack(net.minecraft.init.Items.gold_ingot, 4),
+            new ItemStack(net.minecraft.init.Items.diamond, 4),
+            new ItemStack(net.minecraft.init.Items.coal, 4),
+            new ItemStack(net.minecraft.init.Items.redstone, 4),
+            new ItemStack(net.minecraft.init.Items.glowstone_dust, 4),
+            new ItemStack(net.minecraft.init.Items.quartz, 4)
+        };
+        FluidStack fluid = new FluidStack(net.minecraftforge.fluids.FluidRegistry.WATER, fluidAmount);
+        HostedAssemblyRecipe recipe = headlessRecipe(new GTRecipe.RecipeAssemblyLine(
+            new ItemStack(net.minecraft.init.Items.paper), 1, 32, required,
+            new FluidStack[] { fluid }, new ItemStack(net.minecraft.init.Items.emerald), duration, eut));
+        recipe.mInputs = required;
+        recipe.mFluidInputs = new FluidStack[] { fluid };
+        recipe.mFluidInputChances = new int[] { 10000 };
+        ItemStack[] stock = java.util.Arrays.stream(required).map(ItemStack::copy).toArray(ItemStack[]::new);
+        FluidStack[] fluids = { fluid.copy() };
+        long voltage = (long) eut * 64;
+        OverclockCalculator calculator = HostedAssemblySupport.calculator(eut, duration, voltage, 1, 1)
+            .setAmperageOC(false).setDurationModifier(0.25);
+        ParallelHelper helper = HostedAssemblySupport.planBatch(outputMachine(), recipe, voltage, 1,
+            stock, fluids, calculator, true);
+        assertTrue(helper.getResult().wasSuccessful());
+        assertEquals(1, helper.getCurrentParallel());
+        assertTrue(calculator.getDuration() < 128);
+        assertEquals(1D, helper.getDurationMultiplierDouble());
+        assertEquals(1, helper.getItemOutputs()[0].stackSize);
+        for (int i = 0; i < stock.length; i++) assertEquals(required[i].stackSize, stock[i].stackSize);
+        assertEquals(fluidAmount, fluids[0].amount);
+        recipe.consumeInput(1, fluids, stock);
+        for (ItemStack item : stock) assertEquals(0, item.stackSize);
+        assertEquals(0, fluids[0].amount);
+    }
+
+    @Test
     void fusionBatchDoesNotCountDeferredInputsTwice() throws Exception {
         HostedAssemblyRecipe recipe = shortRecipe();
         ItemStack[] stock = { new ItemStack(net.minecraft.init.Items.iron_ingot, 10) };

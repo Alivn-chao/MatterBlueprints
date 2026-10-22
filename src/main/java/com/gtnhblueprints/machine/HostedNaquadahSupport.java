@@ -20,6 +20,15 @@ final class HostedNaquadahSupport {
     };
     private HostedNaquadahSupport() {}
 
+    static long charge(MTEMultiBlockBase remote, LongSupplier output) {
+        int progress = remote.mProgresstime;
+        remote.mProgresstime = 0;
+        try {
+            return remote.onRunningTick(remote.getControllerSlot()) && remote.mMaxProgresstime > 0
+                ? output.getAsLong() : 0L;
+        } finally { remote.mProgresstime = progress; }
+    }
+
     static boolean isReactor(MTEMultiBlockBase machine) {
         for (Class<?> type = machine.getClass(); type != null; type = type.getSuperclass()) {
             if (type.getName().equals("gregtech.common.tileentities.machines.multi.MTELargeNaquadahReactor")) return true;

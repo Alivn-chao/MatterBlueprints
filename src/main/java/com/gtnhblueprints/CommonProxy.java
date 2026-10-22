@@ -18,6 +18,7 @@ import com.gtnhblueprints.registry.ModItems;
 import com.gtnhblueprints.service.BlueprintBuildService;
 import com.gtnhblueprints.service.BlueprintLibrary;
 import com.gtnhblueprints.service.BlueprintPlanInterceptor;
+import com.gtnhblueprints.service.CrossDimensionMoveService;
 import com.gtnhblueprints.tile.TileBlueprintConfigurator;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -49,6 +50,7 @@ public class CommonProxy implements IGuiHandler {
         FMLCommonHandler.instance().bus().register(service);
         FMLCommonHandler.instance().bus().register(BlueprintNetwork.SERVER_QUEUE);
         MinecraftForge.EVENT_BUS.register(service);
+        MinecraftForge.EVENT_BUS.register(CrossDimensionMoveService.INSTANCE);
         MinecraftForge.EVENT_BUS.register(HostedMachineRegistry.INSTANCE);
         MatterBlueprints.LOG.info(
             "Matter Blueprints {} targets GTNH {} / GTNewHorizonsCoreMod {} / Matter Manipulator {}",

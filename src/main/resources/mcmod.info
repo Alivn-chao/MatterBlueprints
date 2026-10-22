@@ -4,7 +4,7 @@
 		"modid": "${modId}",
 		"name": "${modName}",
 		"description": "Portable and configurable .gtbp blueprints for Matter Manipulator on GTNH 2.9.0-beta-3 with GTNewHorizonsCoreMod 2.9.61.",
-		"version": "0.4.1",
+		"version": "0.4.9",
 		"mcversion": "${minecraftVersion}",
 		"url": "",
 		"updateUrl": "",
