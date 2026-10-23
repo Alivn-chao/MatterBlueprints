@@ -1,0 +1,9 @@
+MEAssemblyFluidPort.java contains a transaction adapted from:
+GTNewHorizons/GT5-Unofficial, tag 5.09.54.133,
+src/main/java/gregtech/common/tileentities/machines/outputme/MTEHatchOutputME.java
+https://github.com/GTNewHorizons/GT5-Unofficial/blob/5.09.54.133/src/main/java/gregtech/common/tileentities/machines/outputme/MTEHatchOutputME.java
+Copyright the GT5-Unofficial contributors, licensed under LGPL-3.0-or-later.
+The adapted file retains that license. LGPL/GPL license texts are bundled at
+gto-port-textures/COPYING.LESSER and gto-port-textures/COPYING.
+Modifications: share the assembly node, expose an independent fluid drive,
+and preserve legacy assembly output on migration.

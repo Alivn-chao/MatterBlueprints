@@ -98,15 +98,20 @@ public class MTEQuantizedMEInputHatch extends MTEHatchInputME {
         notifyWatchers();
         return true;
     }
+    gregtech.common.tileentities.machines.MTEHatchInputME.Slot[] viewSlots() { return slots; }
+    void markFluid(int index, FluidStack fluid) {
+        autoPullFluidList = false;
+        setSlotConfig(index, fluid == null ? null : gregtech.api.util.GTUtility.copyAmount(1, fluid));
+        markDirty(); notifyWatchers();
+        if (getBaseMetaTileEntity() != null && getBaseMetaTileEntity().isServerSide()) {
+            try { updateInformationSlot(index); } catch (GridAccessException ignored) {}
+        }
+    }
     @Override public ModularPanel buildUI(PosGuiData data, PanelSyncManager sync, UISettings settings) {
         return new MTEHatchInputMEGui(this, slots) {
-            @Override protected int getBasePanelHeight() { return super.getBasePanelHeight() + 92; }
+            @Override protected int getBasePanelHeight() { return 188; }
             @Override protected ParentWidget<?> createContentSection(ModularPanel panel, PanelSyncManager manager) {
-                Flow content = Flow.col().coverChildren()
-                    .child(super.createContentSection(panel, manager))
-                    .child(MEMarkingGui.amounts(MTEQuantizedMEInputHatch.this::getMarkedAmount, MTEQuantizedMEInputHatch.this::setMarkedAmount));
-
-                return content;
+                return MEMarkingGui.fluids(MTEQuantizedMEInputHatch.this, panel, manager);
             }
         }.build(data, sync, settings);
     }

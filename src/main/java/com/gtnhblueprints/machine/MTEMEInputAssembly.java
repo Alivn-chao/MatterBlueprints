@@ -4,12 +4,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidTankInfo;
 import net.minecraftforge.common.util.ForgeDirection;
-import com.cleanroommc.modularui.api.IPanelHandler;
-import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
 import appeng.me.helpers.AENetworkProxy;
 import appeng.me.GridAccessException;
 import gregtech.api.interfaces.ITexture;
@@ -41,7 +38,8 @@ public class MTEMEInputAssembly extends MTEQuantizedMEInputBus {
         void prepareSource() { requestSource = MTEMEInputAssembly.this.getRequestSource(); }
         @Override public FluidTankInfo[] getTankInfo(ForgeDirection side) { prepareSource(); return super.getTankInfo(side); }
         void markFluid(int index, FluidStack fluid) {
-            setSlotConfig(index, fluid);
+            autoPullFluidList = false;
+            setSlotConfig(index, fluid == null ? null : gregtech.api.util.GTUtility.copyAmount(1, fluid));
             markDirty();
             MTEMEInputAssembly.this.notifyWatchers();
             IGregTechTileEntity tile = MTEMEInputAssembly.this.getBaseMetaTileEntity();
@@ -83,21 +81,8 @@ public class MTEMEInputAssembly extends MTEQuantizedMEInputBus {
         if (!super.pasteCopiedData(player, tag)) return false;
         fluids.readMarkedConfiguration(tag.getCompoundTag("mbFluidMarks")); return true;
     }
-    @Override protected int amountGUIExtraHeight() { return 112; }
-    @Override protected void addFluidConfigurationButton(Flow content, ModularPanel panel, PanelSyncManager manager) {
-        IPanelHandler handler = manager.syncedPanel("fluidMarks", true, (sync, ignored) -> {
-            MEMarkingGui.syncFluids(fluids, sync);
-            return ModularPanel.defaultPanel("matterblueprints.fluidMarks", 390, 128)
-                .child(MEMarkingGui.fluids(fluids).left(6).top(15));
-        });
-        content.child(new ConfigureFluidButton(handler).overlay(IKey.lang("matterblueprints.stock.configure_fluids")).size(146, 18));
-    }
-    private static final class ConfigureFluidButton extends ButtonWidget<ConfigureFluidButton> {
-        private final IPanelHandler handler;
-        ConfigureFluidButton(IPanelHandler handler) { this.handler = handler; }
-        @Override public Result onMousePressed(int button) {
-            if (handler.isPanelOpen()) handler.closePanel(); else handler.openPanel();
-            return Result.SUCCESS;
-        }
+    @Override protected void addFluidMarks(Flow content, ModularPanel panel, PanelSyncManager manager) {
+        MEMarkingGui.syncFluids(fluids, manager);
+        content.child(MEMarkingGui.fluids(fluids, panel, manager).marginTop(6));
     }
 }

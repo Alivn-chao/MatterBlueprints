@@ -34,6 +34,17 @@ public class MTEQuantizedMEInputBus extends MTEHatchInputBusME {
         markDirty();
         notifyWatchers();
     }
+    void markItem(int index, net.minecraft.item.ItemStack stack) {
+        // Editing a manual mark must not be overwritten by a previously enabled automatic list.
+        autoPullItemList = false;
+        setSlotConfig(index, gregtech.api.util.GTUtility.copyAmount(1, stack));
+        markDirty(); notifyWatchers();
+        IGregTechTileEntity tile = getBaseMetaTileEntity();
+        if (tile != null && tile.isServerSide()) {
+            tile.enableTicking();
+            try { updateInformationSlot(index); } catch (GridAccessException ignored) {}
+        }
+    }
     @Override public void updateInformationSlot(int index) throws GridAccessException {
         super.updateInformationSlot(index);
         if (index >= 0 && index < SLOT_COUNT) markedAmounts.apply(index, slots[index]);
@@ -78,17 +89,20 @@ public class MTEQuantizedMEInputBus extends MTEHatchInputBusME {
         notifyWatchers();
         return true;
     }
-    protected void addFluidConfigurationButton(Flow content, ModularPanel panel, PanelSyncManager manager) {}
-    protected int amountGUIExtraHeight() { return 92; }
+    protected void addFluidMarks(Flow content, ModularPanel panel, PanelSyncManager manager) {}
+    gregtech.common.tileentities.machines.MTEHatchInputBusME.Slot[] viewSlots() { return slots; }
     @Override public ModularPanel buildUI(PosGuiData data, PanelSyncManager sync, UISettings settings) {
         return new MTEHatchInputBusMEGui(this, slots) {
-            @Override protected int getBasePanelHeight() { return super.getBasePanelHeight() + amountGUIExtraHeight(); }
+            @Override protected int getBasePanelHeight() { return MTEQuantizedMEInputBus.this instanceof MTEMEInputAssembly ? 256 : 206; }
             @Override protected ParentWidget<?> createContentSection(ModularPanel panel, PanelSyncManager manager) {
                 Flow content = Flow.col().coverChildren()
-                    .child(super.createContentSection(panel, manager))
-                    .child(MEMarkingGui.amounts(MTEQuantizedMEInputBus.this::getMarkedAmount, MTEQuantizedMEInputBus.this::setMarkedAmount));
-                addFluidConfigurationButton(content, panel, manager);
-
+                    .child(MEMarkingGui.items(MTEQuantizedMEInputBus.this, panel, manager));
+                addFluidMarks(content, panel, manager);
+                content.child(Flow.row().coverChildren().marginTop(5)
+                    .child(createCircuitSlot(manager))
+                    .child(new com.cleanroommc.modularui.widgets.slot.ItemSlot().slot(
+                        new com.cleanroommc.modularui.widgets.slot.ModularSlot(machine.inventoryHandler, machine.getManualSlot())
+                            .singletonSlotGroup())));
                 return content;
             }
         }.build(data, sync, settings);
