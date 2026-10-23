@@ -10,4 +10,7 @@ on:
 jobs:
   build-and-test:
     uses: GTNewHorizons/GTNH-Actions-Workflows/.github/workflows/build-and-test.yml@master
+    with:
+      # Runtime checks require the full GTNH pack; required mods are compileOnly here.
+      client-only: true
     secrets: inherit
