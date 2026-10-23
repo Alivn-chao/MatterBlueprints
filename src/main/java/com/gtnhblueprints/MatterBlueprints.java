@@ -22,7 +22,7 @@ public final class MatterBlueprints {
 
     public static final String MODID = "matterblueprints";
     public static final String NAME = "Matter Blueprints";
-    public static final String VERSION = "0.4.9";
+    public static final String VERSION = "0.4.9-hotfix.1";
     public static final String TARGET_GTNH = "2.9.0-beta-3";
     public static final String TARGET_GTNH_CORE = "2.9.61";
     public static final String TARGET_MM = "0.1.55-GTNH";
