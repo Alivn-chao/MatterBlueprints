@@ -69,7 +69,19 @@ public final class ModMachines {
         MatterBlueprints.LOG.info("Registered Multiblock Machine Host at GregTech MetaTileEntity ID {}", id);
     }
 
+    public static gregtech.api.metatileentity.MetaTileEntity WIRELESS_PATTERN_INPUT, WIRELESS_OUTPUT_BUS, WIRELESS_OUTPUT_HATCH, WIRELESS_OUTPUT_ASSEMBLY, WIRELESS_INPUT_ASSEMBLY;
     public static void init() {
+        WIRELESS_PATTERN_INPUT = new com.gtnhblueprints.wireless.MTEWirelessPatternInputAssembly(requireFreeId(BlueprintConfig.wirelessPatternInputId), "matterblueprints.hatch.wireless_pattern_input", "Wireless ME Pattern Input Assembly");
+        WIRELESS_OUTPUT_BUS = new com.gtnhblueprints.wireless.MTEWirelessOutputBus(requireFreeId(BlueprintConfig.wirelessOutputBusId), "matterblueprints.hatch.wireless_output_bus", "Wireless ME Output Bus");
+        WIRELESS_OUTPUT_HATCH = new com.gtnhblueprints.wireless.MTEWirelessOutputHatch(requireFreeId(BlueprintConfig.wirelessOutputHatchId), "matterblueprints.hatch.wireless_output_hatch", "Wireless ME Output Hatch");
+        WIRELESS_OUTPUT_ASSEMBLY = new com.gtnhblueprints.wireless.MTEWirelessOutputAssembly(requireFreeId(BlueprintConfig.wirelessOutputAssemblyId), "matterblueprints.hatch.wireless_output_assembly", "Wireless ME Output Assembly");
+        WIRELESS_INPUT_ASSEMBLY = new com.gtnhblueprints.wireless.MTEWirelessInputAssembly(requireFreeId(BlueprintConfig.wirelessInputAssemblyId), "matterblueprints.hatch.wireless_input_assembly", "Wireless ME Input Assembly");
+        GTModHandler.addShapelessCraftingRecipe(WIRELESS_PATTERN_INPUT.getStackForm(1), new Object[] { ItemList.Hatch_CraftingInput_Bus_ME.get(1), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get() });
+        GTModHandler.addShapelessCraftingRecipe(WIRELESS_OUTPUT_BUS.getStackForm(1), new Object[] { ItemList.Hatch_Output_Bus_ME.get(1), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get() });
+        GTModHandler.addShapelessCraftingRecipe(WIRELESS_OUTPUT_HATCH.getStackForm(1), new Object[] { ItemList.Hatch_Output_ME.get(1), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get() });
+        GTModHandler.addShapelessCraftingRecipe(WIRELESS_OUTPUT_ASSEMBLY.getStackForm(1), new Object[] { ME_OUTPUT_ASSEMBLY.getStackForm(1), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get() });
+        GTModHandler.addShapelessCraftingRecipe(WIRELESS_INPUT_ASSEMBLY.getStackForm(1), new Object[] { ME_INPUT_ASSEMBLY.getStackForm(1), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get() });
+
         GTModHandler.addShapelessCraftingRecipe(QUANTIZED_ME_INPUT_BUS.getStackForm(1),
             new Object[] { ItemList.Hatch_Input_Bus_ME_Advanced.get(1) });
         GTModHandler.addShapelessCraftingRecipe(QUANTIZED_ME_INPUT_HATCH.getStackForm(1),

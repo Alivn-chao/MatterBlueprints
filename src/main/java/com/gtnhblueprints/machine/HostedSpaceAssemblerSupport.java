@@ -13,6 +13,11 @@ final class HostedSpaceAssemblerSupport {
 
     private static final String ASSEMBLER_CLASS =
         "gtnhintergalactic.tile.multi.elevatormodules.TileEntityModuleAssembler";
+    private static final ClassValue<Boolean> ASSEMBLERS = new ClassValue<Boolean>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            return isSupportedClassName(findAssemblerClassName(type));
+        }
+    };
     private static final ClassValue<Hooks> HOOKS = new ClassValue<Hooks>() {
 
         @Override
@@ -28,7 +33,7 @@ final class HostedSpaceAssemblerSupport {
     }
 
     static boolean isSpaceAssembler(MTEMultiBlockBase machine) {
-        return machine != null && isSupportedClassName(findAssemblerClassName(machine.getClass()));
+        return machine != null && ASSEMBLERS.get(machine.getClass());
     }
 
     static boolean isConnected(MTEMultiBlockBase machine) {

@@ -71,4 +71,35 @@ class HostedAssemblyOverclockTest {
             .setMaxOverclocks(laser.getPerformedOverclocks()).calculate();
         assertTrue(sameOverclocks.getConsumption() <= laser.getConsumption());
     }
+
+    @Test
+    void laserModeUsesHighAmperageEvenWhenRecipeAlreadyMatchesUmvVoltage() {
+        long voltage = 134_217_728L;
+        int recipeEUt = 125_829_120;
+        OverclockCalculator singleAmp = HostedAssemblySupport.calculator(recipeEUt, 480_000, voltage, 1, 0)
+            .setDurationModifier(0.75).calculate();
+        OverclockCalculator highAmp = HostedAssemblySupport.calculator(recipeEUt, 480_000, voltage, 65_536, 0)
+            .setDurationModifier(0.75).calculate();
+        assertEquals(0, singleAmp.getPerformedOverclocks());
+        assertEquals(360_000, singleAmp.getDuration());
+        assertTrue(highAmp.getPerformedOverclocks() > 0, "65536A must enable laser overclocking at the same voltage tier");
+        assertTrue(highAmp.getDuration() < singleAmp.getDuration());
+        assertTrue(highAmp.getConsumption() > recipeEUt);
+        assertTrue(highAmp.getConsumption() <= voltage * 65_536);
+        OverclockCalculator regular = HostedAssemblySupport.calculator(recipeEUt, 480_000, voltage, 65_536, 1)
+            .setDurationModifier(0.75).calculate();
+        assertTrue(regular.getDuration() <= highAmp.getDuration());
+    }
+
+    @Test
+    void laserModeKeepsItsIncreasingEnergyPenalty() {
+        OverclockCalculator laser = HostedAssemblySupport.calculator(32, 1024, 32, 64, 0).calculate();
+        assertTrue(laser.getPerformedOverclocks() >= 2);
+        int ocs = laser.getPerformedOverclocks();
+        OverclockCalculator regular = HostedAssemblySupport.calculator(32, 1024, 32, 64, 1)
+            .setMaxOverclocks(ocs).calculate();
+        assertEquals(regular.getDuration(), laser.getDuration());
+        assertTrue(laser.getConsumption() > regular.getConsumption());
+        assertTrue(laser.getConsumption() <= 32 * 64);
+    }
 }

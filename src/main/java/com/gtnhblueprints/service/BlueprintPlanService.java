@@ -41,10 +41,11 @@ public final class BlueprintPlanService {
         }
 
         MMState state = BlueprintInteractionService.syncOriginFromManipulator(player, bound).clone();
+        state.config.interfaceCopyMode = MMState.InterfaceCopyMode.COPY;
         boolean all = (flags & MMUtils.PLAN_ALL) != 0;
         boolean autoSubmit = (flags & MMUtils.PLAN_AUTO_SUBMIT) != 0;
         List<PendingBlock> blocks = bound.createPendingBlocks(false, state.config.transform, state.config.arraySpan);
-        RequiredItemAnalysis analysis = BlockAnalyzer.getRequiredItemsForBuild(player, blocks, all);
+        RequiredItemAnalysis analysis = BlockAnalyzer.getRequiredItemsForBuild(player, state, blocks, all);
         List<BigItemStack> requested = new ArrayList<>(analysis.requiredItems.size());
         for (Map.Entry<ItemId, Long> entry : analysis.requiredItems.entrySet()) {
             if (entry.getValue() > 0) requested.add(BigItemStack.create(entry.getKey(), entry.getValue()));

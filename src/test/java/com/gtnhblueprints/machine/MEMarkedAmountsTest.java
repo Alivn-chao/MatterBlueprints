@@ -59,4 +59,40 @@ class MEMarkedAmountsTest {
         assertEquals(3, slot.extractedAmount - slot.extracted.stackSize);
         assertEquals(10000, network.stackSize);
     }
+    @Test void defaultAmountsLeaveNoItemNbtButExplicitZeroIsRetained() {
+        MEMarkedAmounts amounts = new MEMarkedAmounts();
+        NBTTagCompound tag = new NBTTagCompound();
+        amounts.save(tag);
+        assertTrue(tag.hasNoTags());
+        amounts.set(4, 0);
+        amounts.save(tag);
+        assertFalse(tag.hasNoTags());
+        MEMarkedAmounts loaded = new MEMarkedAmounts(); loaded.load(tag);
+        assertEquals(0, loaded.get(4));
+        amounts.set(4, Integer.MAX_VALUE); amounts.save(tag);
+        assertTrue(tag.hasNoTags());
+    }
+    @Test void slotLabelsFitLargeQuantitiesWithoutRoundingPastTheLimit() {
+        assertEquals("2.14G", MEMarkingGui.compactAmount(Integer.MAX_VALUE));
+        assertEquals("1.23M", MEMarkingGui.compactAmount(1239999));
+        assertEquals("1k", MEMarkingGui.compactAmount(1000));
+        assertEquals("256", MEMarkingGui.compactAmount(256));
+        assertEquals("0", MEMarkingGui.compactAmount(0));
+    }
+    @Test void dismantledEmptyAssemblyHasNoExtraNbtAndConfiguredAmountsSurvive() {
+        MTEMEInputAssembly assembly = new MTEMEInputAssembly("test.empty_assembly", 8, new String[0], null);
+        NBTTagCompound empty = new NBTTagCompound();
+        assembly.setItemNBT(empty);
+        assertTrue(empty.hasNoTags(), empty.toString());
+        assembly.markedAmounts.set(3, 128);
+        assembly.fluids.markedAmounts.set(5, 4000);
+        NBTTagCompound configured = new NBTTagCompound();
+        assembly.setItemNBT(configured);
+        MEMarkedAmounts items = new MEMarkedAmounts(); items.load(configured);
+        MEMarkedAmounts fluids = new MEMarkedAmounts(); fluids.load(configured.getCompoundTag("mbFluidMarks"));
+        assertEquals(128, items.get(3));
+        assertEquals(4000, fluids.get(5));
+        NBTTagCompound same = new NBTTagCompound(); assembly.setItemNBT(same);
+        assertEquals(configured, same);
+    }
 }

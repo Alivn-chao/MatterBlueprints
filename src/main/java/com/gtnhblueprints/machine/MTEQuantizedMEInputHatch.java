@@ -42,7 +42,6 @@ public class MTEQuantizedMEInputHatch extends MTEHatchInputME {
     @Override public void loadNBTData(NBTTagCompound tag) { super.loadNBTData(tag); markedAmounts.load(tag); }
     void writeMarkedConfiguration(NBTTagCompound tag) {
         markedAmounts.save(tag);
-        tag.setInteger("version", 1);
         NBTTagList configured = new NBTTagList();
         for (int i = 0; i < slots.length; i++) {
             if (slots[i] == null) continue;
@@ -51,7 +50,11 @@ public class MTEQuantizedMEInputHatch extends MTEHatchInputME {
             slot.setInteger("index", i);
             configured.appendTag(slot);
         }
-        tag.setTag("slots", configured);
+        if (configured.tagCount() > 0) {
+            tag.setInteger("version", 1);
+            tag.setTag("slots", configured);
+        }
+
     }
     void readMarkedConfiguration(NBTTagCompound tag) {
         markedAmounts.load(tag);

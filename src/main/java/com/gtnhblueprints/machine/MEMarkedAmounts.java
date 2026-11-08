@@ -25,7 +25,14 @@ final class MEMarkedAmounts {
         if (slot.extractedAmount == 0) slot.extracted = null;
         else slot.extracted.amount = slot.extractedAmount;
     }
-    void save(NBTTagCompound tag) { tag.setIntArray("mbMarkedAmounts", amounts); }
+    boolean isDefault() {
+        for (int amount : amounts) if (amount != Integer.MAX_VALUE) return false;
+        return true;
+    }
+    void save(NBTTagCompound tag) {
+        if (isDefault()) tag.removeTag("mbMarkedAmounts");
+        else tag.setIntArray("mbMarkedAmounts", amounts);
+    }
     void load(NBTTagCompound tag) {
         Arrays.fill(amounts, Integer.MAX_VALUE);
         int[] saved = tag.getIntArray("mbMarkedAmounts");

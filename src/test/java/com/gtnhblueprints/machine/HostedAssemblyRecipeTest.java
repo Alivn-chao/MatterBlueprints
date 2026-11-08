@@ -174,6 +174,124 @@ class HostedAssemblyRecipeTest {
         assertEquals(1, stock[0].stackSize);
     }
 
+    @Test
+    void tenDualUmvOrdinaryLinesUseFortyParallelDespiteUnfedFlashRecipes() throws Exception {
+        assertFullAssemblyAllocation(false, 3);
+    }
+
+    @Test
+    void advancedLinesUseFullCapacityInLaserRegularAndPerfectModes() throws Exception {
+        for (int energy : new int[] { 0, 3, 6 }) assertFullAssemblyAllocation(true, energy);
+    }
+
+    @Test
+    void oneHongmengRecipeStillLaserOverclocksWithUmv65536Amps() throws Exception {
+        int recipeEUt = 125_829_120;
+        long voltage = 134_217_728L;
+        long amps = 65_536L;
+        HostedAssemblyRecipe recipe = headlessRecipe(new GTRecipe.RecipeAssemblyLine(
+            new ItemStack(net.minecraft.init.Items.paper), 1, 32,
+            new ItemStack[] { new ItemStack(net.minecraft.init.Items.iron_ingot) }, new FluidStack[0],
+            new ItemStack(net.minecraft.init.Items.gold_ingot), 480_000, recipeEUt));
+        ItemStack[] stock = { new ItemStack(net.minecraft.init.Items.iron_ingot) };
+        OverclockCalculator calculator = HostedAssemblySupport.calculator(recipeEUt, 480_000, voltage, amps,
+            HostedAssemblySupport.overclockMode(true, 2)).setDurationModifier(0.75);
+        ParallelHelper helper = HostedAssemblySupport.planBatch(outputMachine(), recipe, voltage * amps,
+            8 * 16, stock, new FluidStack[0], calculator, true);
+        assertTrue(helper.getResult().wasSuccessful());
+        assertEquals(1, helper.getCurrentParallel());
+        assertTrue(calculator.getPerformedOverclocks() > 0);
+        assertTrue(HostedProcessingSettings.duration(calculator.getDuration(), helper.getDurationMultiplierDouble()) < 360_000);
+        assertTrue(calculator.getConsumption() > recipeEUt);
+        assertTrue(calculator.getConsumption() <= voltage * amps);
+        assertEquals(1, stock[0].stackSize);
+        recipe.plan(stock, new FluidStack[0], helper.getCurrentParallel()).consume(stock, new FluidStack[0]);
+        assertEquals(0, stock[0].stackSize);
+        assertEquals(1, helper.getItemOutputs()[0].stackSize);
+    }
+
+    @Test
+    void laserAmperageAlsoRetainsSubTickAndBatchBenefitsWithoutDoubleConsumption() throws Exception {
+        int unbatched = 0;
+        for (boolean batch : new boolean[] { false, true }) {
+            HostedAssemblyRecipe recipe = shortRecipe();
+            ItemStack[] stock = { new ItemStack(net.minecraft.init.Items.iron_ingot, 1024) };
+            long power = 32L * 65_536;
+            OverclockCalculator calculator = HostedAssemblySupport.calculator(32, 4, 32, 65_536, 0);
+            ParallelHelper helper = HostedAssemblySupport.planBatch(outputMachine(), recipe, power, 1,
+                stock, new FluidStack[0], calculator, batch);
+            assertTrue(helper.getResult().wasSuccessful());
+            int runs = helper.getCurrentParallel();
+            assertTrue(runs > 1, "Sub-tick laser speed must become additional runs");
+            assertTrue(runs <= 1024);
+            if (!batch) unbatched = runs;
+            else assertTrue(runs > unbatched, "Batching must still add runs above sub-tick parallel");
+            assertTrue(calculator.getConsumption() <= power);
+            assertEquals(1024, stock[0].stackSize);
+            recipe.plan(stock, new FluidStack[0], runs).consume(stock, new FluidStack[0]);
+            assertEquals(1024 - runs, stock[0].stackSize);
+            int produced = 0;
+            for (ItemStack stack : helper.getItemOutputs()) produced += stack.stackSize;
+            assertEquals(runs, produced);
+        }
+    }
+
+    private void assertFullAssemblyAllocation(boolean advanced, int energyLevel) throws Exception {
+        int base = HostedAssemblySupport.baseParallel(advanced, 8);
+        int expected = 40 * base;
+        HostedAssemblyRecipe recipe = headlessRecipe(new GTRecipe.RecipeAssemblyLine(
+            new ItemStack(net.minecraft.init.Items.paper), 1, 32,
+            new ItemStack[] { new ItemStack(net.minecraft.init.Items.iron_ingot) }, new FluidStack[0],
+            new ItemStack(net.minecraft.init.Items.gold_ingot), 900, 31_457_280));
+        ItemStack[] stock = { new ItemStack(net.minecraft.init.Items.iron_ingot, expected) };
+        java.util.List<Integer> flash = java.util.stream.IntStream.range(0, 30).boxed()
+            .collect(java.util.stream.Collectors.toList());
+        java.util.List<Integer> occupied = new java.util.ArrayList<>();
+        HostedYieldAccumulator yield = new HostedYieldAccumulator();
+        java.util.concurrent.atomic.AtomicInteger output = new java.util.concurrent.atomic.AtomicInteger();
+        HostedAssemblyScheduling.Attempt<Integer> probe = (candidate, units) -> {
+            if (candidate != 17) return 0;
+            int before = stock[0].stackSize;
+            HostedAssemblySupport.Prepared prepared = allocationPlan(recipe, stock, base, units, advanced, energyLevel);
+            assertEquals(before, stock[0].stackSize, "Probing must not consume ingredients");
+            return prepared == null ? 0 : prepared.units(units);
+        };
+        assertTrue(HostedAssemblyScheduling.schedule(flash, 40, 10, probe, (candidate, units) -> {
+            HostedAssemblySupport.Prepared prepared = allocationPlan(recipe, stock, base, units, advanced, energyLevel);
+            if (prepared == null) return 0;
+            occupied.add(prepared.units(units));
+            assertEquals(expected, prepared.helper.getCurrentParallel());
+            assertTrue(prepared.usage <= 134_217_728L * 4 * units);
+            if (!advanced) {
+                assertEquals(225D, prepared.calculator.getDuration()); // 45s -> ordinary OC -> speed x0.50.
+                assertEquals(5_033_164_800L, prepared.usage);
+            }
+            prepared.plan.consume(stock, new FluidStack[0]);
+            ItemStack[] outputs = prepared.helper.getItemOutputs();
+            yield.apply(outputs, new FluidStack[0], 2);
+            for (ItemStack stack : outputs) output.addAndGet(stack.stackSize);
+            return prepared.units(units);
+        }));
+        assertEquals(java.util.Arrays.asList(40), occupied);
+        assertEquals(0, stock[0].stackSize);
+        assertEquals(expected * 3 / 2, output.get());
+    }
+
+    private HostedAssemblySupport.Prepared allocationPlan(HostedAssemblyRecipe recipe, ItemStack[] stock,
+        int base, int units, boolean advanced, int energyLevel) {
+        long voltage = 134_217_728L;
+        long power = voltage * 4 * units; // Two native 2A UMV hatches per equivalent assembly unit.
+        OverclockCalculator calculator = HostedAssemblySupport.calculator(recipe.mEUt, recipe.mDuration,
+            voltage, power / voltage, HostedAssemblySupport.overclockMode(advanced, energyLevel))
+            .setDurationModifier(0.5).setMaxTierSkips(advanced ? 0 : 1);
+        if (!advanced) calculator.setAmperageOC(false);
+        ParallelHelper helper = HostedAssemblySupport.planBatch(outputMachine(), recipe, power, base * units,
+            stock, new FluidStack[0], calculator, false);
+        if (!helper.getResult().wasSuccessful() || helper.getCurrentParallel() <= 0) return null;
+        return new HostedAssemblySupport.Prepared(helper, calculator,
+            recipe.plan(stock, new FluidStack[0], helper.getCurrentParallel()), calculator.getConsumption(), base);
+    }
+
     private void assertExactBatchWithoutExtraRuns(int eut, int duration, int fluidAmount) throws Exception {
         ItemStack[] required = {
             new ItemStack(net.minecraft.init.Items.iron_ingot, 2),

@@ -17,7 +17,18 @@ public final class HostedLateMixinLoader implements ILateMixinLoader {
 
     @Override
     public List<String> getMixins(Set<String> loadedMods) {
-        return loadedMods.contains("gregtech") ? java.util.Arrays.asList("MixinAntimatterForge", "MixinGTAssemblyPorts", "MixinHatchElementInput", "MixinHatchElementOutput", "MixinHatchElementClasses")
-            : Collections.emptyList();
+        List<String> mixins = new java.util.ArrayList<>();
+        if (loadedMods.contains("gregtech")) mixins.addAll(java.util.Arrays.asList("MixinAntimatterForge", "MixinGTAssemblyPorts", "MixinHatchElementInput", "MixinHatchElementOutput", "MixinHatchElementClasses", "MixinGTHostedBindingRemoval"));
+        if (loadedMods.contains("gregtech") && loadedMods.contains("matter-manipulator")) {
+            mixins.add("MixinMMHostedBinding");
+            mixins.add("MixinMMHostedMove");
+        }
+        if (loadedMods.contains("appliedenergistics2")) {
+            mixins.add("MixinAEWirelessControllerClass");
+            mixins.add("MixinAEWirelessPathGrid");
+            mixins.add("MixinAEWirelessPathCalculation");
+        }
+        if (loadedMods.contains("gregtech")) mixins.add("MixinHostedMachineVisuals");
+        return mixins;
     }
 }

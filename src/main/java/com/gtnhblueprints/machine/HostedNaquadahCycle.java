@@ -14,6 +14,12 @@ final class HostedNaquadahCycle {
     boolean configured;
     boolean wireless;
     int wirelessTicks;
+    // Derived, non-persistent quotient/remainder. Rebuild after reload, mode change or an unusual partial credit.
+    private BigInteger rateEnergy;
+    private int rateTicks;
+    private BigInteger wirelessRate;
+    private BigInteger wirelessRatePlusOne;
+    private int wirelessRemainder;
 
     HostedNaquadahCycle(int baseTicks, int boostedTicks, int settledTicks) {
         this.baseTicks = Math.max(1, baseTicks);
@@ -47,8 +53,15 @@ final class HostedNaquadahCycle {
     BigInteger nextOutput(long capacity) {
         if (!ready() || energy.signum() <= 0) return BigInteger.ZERO;
         if (wireless) {
-            BigInteger ticks = BigInteger.valueOf(Math.max(1, wirelessTicks));
-            return energy.divide(ticks);
+            if (rateEnergy != energy || rateTicks != wirelessTicks) {
+                BigInteger[] rate = energy.divideAndRemainder(BigInteger.valueOf(Math.max(1, wirelessTicks)));
+                wirelessRate = rate[0];
+                wirelessRatePlusOne = wirelessRate.add(BigInteger.ONE);
+                wirelessRemainder = rate[1].intValue();
+                rateEnergy = energy;
+                rateTicks = wirelessTicks;
+            }
+            return cachedWirelessOutput();
         }
         return energy.min(BigInteger.valueOf(Math.max(0L, capacity)));
     }
@@ -57,8 +70,18 @@ final class HostedNaquadahCycle {
         if (accepted.signum() < 0 || (!wireless && accepted.signum() == 0) || accepted.compareTo(energy) > 0) {
             throw new IllegalArgumentException("Invalid generator credit");
         }
+        boolean retainRate = wireless && rateEnergy == energy && rateTicks == wirelessTicks
+            && accepted.equals(cachedWirelessOutput());
         energy = energy.subtract(accepted);
         if (wireless && wirelessTicks > 0) wirelessTicks--;
+        if (retainRate) {
+            rateEnergy = energy;
+            rateTicks = wirelessTicks;
+        }
+    }
+
+    private BigInteger cachedWirelessOutput() {
+        return wirelessTicks > 0 && wirelessTicks <= wirelessRemainder ? wirelessRatePlusOne : wirelessRate;
     }
 
     int remainingTicks(long capacity) {

@@ -47,7 +47,7 @@ final class MEAssemblyFluidPort implements IOutputHatch, MTEHatchOutputMEBase.En
     final MTEHatchOutputMEBase<IAEFluidStack> provider;
     MEAssemblyFluidPort(MTEMEOutputAssembly owner) {
         this.owner = owner;
-        provider = new MTEHatchOutputMEBase<IAEFluidStack>(this, 128_000) {
+        provider = new MTEHatchOutputMEBase<IAEFluidStack>(this) {
             @Override public AENetworkProxy getProxy() { return owner.getProxy(); }
         };
     }
@@ -55,6 +55,7 @@ final class MEAssemblyFluidPort implements IOutputHatch, MTEHatchOutputMEBase.En
     @Override public IGregTechTileEntity getBaseMetaTileEntity() { return owner.getBaseMetaTileEntity(); }
     @Override public IGridProxyable getIGridProxyable() { return owner; }
     @Override public StorageChannel getChannel() { return StorageChannel.FLUIDS; }
+    @Override public long getDefaultCapacity() { return 128_000; }
     @Override public ItemStack getCellStack() { return cell.getStackInSlot(0); }
     @Override public ISaveProvider getISaveProvider() { return owner; }
     @Override public BaseActionSource getActionSource() { return owner.getActionSource(); }

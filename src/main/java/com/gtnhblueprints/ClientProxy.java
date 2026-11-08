@@ -30,6 +30,13 @@ public final class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         super.init(event);
         BlueprintNetwork.initializeClient();
+        // AE's block render ID leaves inventory rendering to its separately registered item renderer.
+        net.minecraft.item.ItemStack controller = appeng.api.AEApi.instance().definitions().blocks().controller().maybeStack(1).get();
+        net.minecraftforge.client.IItemRenderer controllerRenderer = net.minecraftforge.client.MinecraftForgeClient.getItemRenderer(
+            controller, net.minecraftforge.client.IItemRenderer.ItemRenderType.INVENTORY);
+        if (controllerRenderer == null) throw new IllegalStateException("AE controller item renderer is unavailable");
+        net.minecraftforge.client.MinecraftForgeClient.registerItemRenderer(
+            net.minecraft.item.Item.getItemFromBlock(ModBlocks.WIRELESS_ME_CONTROLLER), controllerRenderer);
         ClientCommandHandler.instance.registerCommand(new LocalBlueprintCommand());
         MinecraftForge.EVENT_BUS.register(ClientBlueprintController.INSTANCE);
         MinecraftForge.EVENT_BUS.register(ClientCrossDimensionMovePreview.INSTANCE);

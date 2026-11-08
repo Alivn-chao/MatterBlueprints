@@ -220,9 +220,10 @@ public final class BlueprintCommand extends CommandBase {
     private static void materials(EntityPlayerMP player, String[] args) {
         boolean all = args.length >= 2 && "all".equalsIgnoreCase(args[1]);
         BoundBlueprint bound = BlueprintLibrary.require(player);
-        MMState state = BlueprintInteractionService.syncOriginFromManipulator(player, bound);
+        MMState state = BlueprintInteractionService.syncOriginFromManipulator(player, bound).clone();
+        state.config.interfaceCopyMode = MMState.InterfaceCopyMode.COPY;
         List<PendingBlock> blocks = bound.createPendingBlocks(false, state.config.transform, state.config.arraySpan);
-        RequiredItemAnalysis analysis = BlockAnalyzer.getRequiredItemsForBuild(player, blocks, all);
+        RequiredItemAnalysis analysis = BlockAnalyzer.getRequiredItemsForBuild(player, state, blocks, all);
         List<Map.Entry<ItemId, Long>> items = new ArrayList<>(analysis.requiredItems.entrySet());
         items.sort(Map.Entry.<ItemId, Long>comparingByValue(Comparator.reverseOrder()));
         player.addChatMessage(new ChatComponentText("§b[GTBP] " + (all ? "全部" : "缺失") + "材料种类: " + items.size()));

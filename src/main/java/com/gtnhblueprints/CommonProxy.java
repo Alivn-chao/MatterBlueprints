@@ -43,6 +43,8 @@ public class CommonProxy implements IGuiHandler {
 
     public void init(FMLInitializationEvent event) {
         ModBlocks.init();
+        FMLCommonHandler.instance().bus().register(com.gtnhblueprints.wireless.WirelessMEService.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(com.gtnhblueprints.wireless.WirelessMEService.INSTANCE);
         ModItems.init();
         ModMachines.init();
         BlueprintPlanInterceptor.install();

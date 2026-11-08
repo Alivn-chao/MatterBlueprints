@@ -14,7 +14,7 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
     version = MatterBlueprints.VERSION,
     name = MatterBlueprints.NAME,
     acceptedMinecraftVersions = "[1.7.10]",
-    dependencies = "required-after:gregtech;required-after:matter-manipulator")
+    dependencies = "required-after:appliedenergistics2;required-after:gregtech;required-after:matter-manipulator")
 public final class MatterBlueprints {
 
     @Mod.Instance("matterblueprints")
@@ -22,10 +22,10 @@ public final class MatterBlueprints {
 
     public static final String MODID = "matterblueprints";
     public static final String NAME = "Matter Blueprints";
-    public static final String VERSION = "0.4.10";
-    public static final String TARGET_GTNH = "2.9.0-beta-3";
-    public static final String TARGET_GTNH_CORE = "2.9.61";
-    public static final String TARGET_MM = "0.1.55-GTNH";
+    public static final String VERSION = "0.4.26";
+    public static final String TARGET_GTNH = "2.9.0";
+    public static final String TARGET_GTNH_CORE = "2.9.99";
+    public static final String TARGET_MM = "0.1.75-GTNH";
     public static final Logger LOG = LogManager.getLogger(MODID);
 
     @SidedProxy(clientSide = "com.gtnhblueprints.ClientProxy", serverSide = "com.gtnhblueprints.CommonProxy")

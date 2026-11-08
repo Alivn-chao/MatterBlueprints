@@ -18,6 +18,18 @@ import com.recursive_pineapple.matter_manipulator.common.networking.Messages;
 class MatterManipulatorCompatibilityTest {
 
     @Test
+    void releaseMaterialAnalysisUsesManipulatorStateAndExplicitInterfaceCopyMode() throws ReflectiveOperationException {
+        assertEquals(com.recursive_pineapple.matter_manipulator.common.building.BlockAnalyzer.RequiredItemAnalysis.class,
+            com.recursive_pineapple.matter_manipulator.common.building.BlockAnalyzer.class.getDeclaredMethod(
+                "getRequiredItemsForBuild", EntityPlayer.class,
+                com.recursive_pineapple.matter_manipulator.common.items.manipulator.MMState.class,
+                java.util.List.class, boolean.class).getReturnType());
+        assertEquals(com.recursive_pineapple.matter_manipulator.common.items.manipulator.MMState.InterfaceCopyMode.class,
+            com.recursive_pineapple.matter_manipulator.common.items.manipulator.MMConfig.class
+                .getDeclaredField("interfaceCopyMode").getType());
+    }
+
+    @Test
     void buildQueueRemainsAccessibleAsACollection() throws ReflectiveOperationException {
         Field queue = PendingBuild.class.getDeclaredField("pendingBlocks");
         queue.setAccessible(true);

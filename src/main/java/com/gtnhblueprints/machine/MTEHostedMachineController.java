@@ -90,8 +90,11 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     // GT multiblocks reserve slot 0 but do not use it; slot 1 remains the machine selector.
     public static final int WIRELESS_UPGRADE_SLOT = 0;
     private boolean wirelessMode;
+    private boolean hostedEffects = BlueprintConfig.hostedMachineEffects;
     private final WirelessEnergyBuffer wirelessBuffer = new WirelessEnergyBuffer();
     private static final WirelessEnergyBuffer.Ledger WIRELESS_LEDGER = WirelessNetworkManager::addEUToGlobalEnergyMap;
+    private static final UUID EMPTY_UUID = new UUID(0, 0);
+    private static volatile ItemStack wirelessUpgradeReference;
 
     public MTEHostedMachineController(int id, String name, String regionalName) {
         super(id, name, regionalName);
@@ -181,8 +184,10 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     }
 
     private static boolean isWirelessUpgrade(ItemStack stack) {
-        return stack != null && stack.stackSize > 0
-            && gregtech.api.enums.ItemList.EnergisedTesseract.get(1).isItemEqual(stack);
+        if (stack == null || stack.stackSize <= 0) return false;
+        // ItemList.get() copies an ItemStack. The registry identity is fixed after mod initialization.
+        if (wirelessUpgradeReference == null) wirelessUpgradeReference = gregtech.api.enums.ItemList.EnergisedTesseract.get(1);
+        return wirelessUpgradeReference.isItemEqual(stack);
     }
 
     public boolean isWirelessMode() {
@@ -234,7 +239,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         IGregTechTileEntity tile = getBaseMetaTileEntity();
         if (tile == null || !tile.isServerSide() || !isWirelessMode()) return false;
         UUID player = tile.getOwnerUuid();
-        if (player == null || player.equals(new UUID(0, 0))) return false;
+        if (player == null || player.equals(EMPTY_UUID)) return false;
         UUID account = SpaceProjectManager.getLeader(player);
         boolean result = wirelessBuffer.consume(account, amount, remainingTicks, WIRELESS_LEDGER);
         markDirty();
@@ -244,7 +249,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     boolean canGenerateWirelessly() {
         IGregTechTileEntity tile = getBaseMetaTileEntity();
         return tile != null && tile.isServerSide() && isWirelessMode()
-            && tile.getOwnerUuid() != null && !tile.getOwnerUuid().equals(new UUID(0, 0));
+            && tile.getOwnerUuid() != null && !tile.getOwnerUuid().equals(EMPTY_UUID);
     }
 
     boolean generateWirelessEnergy(long amount) {
@@ -382,6 +387,8 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     public void onPostTick(IGregTechTileEntity tileEntity, long tick) {
         super.onPostTick(tileEntity, tick);
         if (!tileEntity.isServerSide()) return;
+        // Index legacy bindings even when the center is unformed or has no selector.
+        if (tick == 1L || tick % BlueprintConfig.hostedMachineScanIntervalTicks == 0) coordinator.synchronizeBindings();
         if (!hasWirelessUpgrade()) wirelessMode = false;
         if (!isWirelessMode()) refundWirelessEnergy();
         if (getmStartUpCheck() >= 0) {
@@ -397,9 +404,10 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         if (tick % 20L == 0L) refreshPatternTerminalIcons();
         if (tick % BlueprintConfig.hostedMachineScanIntervalTicks == 0) coordinator.refresh();
         coordinator.tick(tick, tileEntity.isAllowedToWork());
-        if (coordinator.getRunningCount() == 0 || coordinator.isGeneratorMode()) refundWirelessEnergy();
+        int running = coordinator.getRunningCount();
+        if (running == 0 || coordinator.isGeneratorMode()) refundWirelessEnergy();
         synchronizeHostedDisplayState();
-        tileEntity.setActive(coordinator.getRunningCount() > 0);
+        tileEntity.setActive(running > 0);
     }
 
     /**
@@ -446,6 +454,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         super.saveNBTData(tag);
         coordinator.writeToNBT(tag);
         tag.setBoolean("mbHostWireless", wirelessMode);
+        tag.setBoolean("mbHostEffects", hostedEffects);
         tag.setLong("mbHostWirelessEU", wirelessBuffer.getStored());
         if (wirelessBuffer.getAccount() != null) tag.setString("mbHostWirelessAccount", wirelessBuffer.getAccount().toString());
         else tag.removeTag("mbHostWirelessAccount");
@@ -455,12 +464,14 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     public void setItemNBT(NBTTagCompound tag) {
         super.setItemNBT(tag);
         coordinator.writeMilestonesToItem(tag);
+        tag.setBoolean("mbHostEffects", hostedEffects);
     }
 
     @Override
     public void loadNBTData(NBTTagCompound tag) {
         super.loadNBTData(tag);
         coordinator.readFromNBT(tag);
+        hostedEffects = tag.hasKey("mbHostEffects") ? tag.getBoolean("mbHostEffects") : BlueprintConfig.hostedMachineEffects;
         wirelessMode = tag.getBoolean("mbHostWireless");
         String account = tag.getString("mbHostWirelessAccount");
         try {
@@ -474,6 +485,23 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     public void onDisableWorking() {
         super.onDisableWorking();
+    }
+
+    boolean hostedEffectsEnabled() { return hostedEffects; }
+
+    @Override
+    public void onScrewdriverRightClick(ForgeDirection side, EntityPlayer player, float x, float y, float z,
+        ItemStack tool) {
+        if (getBaseMetaTileEntity() == null || !getBaseMetaTileEntity().isServerSide()) return;
+        if (player.isSneaking()) {
+            super.onScrewdriverRightClick(side, player, x, y, z, tool);
+            return;
+        }
+        hostedEffects = !hostedEffects;
+        if (!hostedEffects) coordinator.stopHostedVisuals();
+        markDirty();
+        gregtech.api.util.GTUtility.sendChatTrans(player,
+            hostedEffects ? "matterblueprints.host.effects.on" : "matterblueprints.host.effects.off");
     }
 
     @Override
@@ -548,6 +576,9 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     }
 
     public BindingResult toggleHostedBinding(MTEMultiBlockBase machine) {
+        if (coordinator.bindingOwnedElsewhere(machine)) {
+            return new BindingResult("matterblueprints.binder.already_bound", coordinator.getBindingCount());
+        }
         boolean bound = coordinator.toggleBinding(machine);
         IGregTechTileEntity tile = getBaseMetaTileEntity();
         if (tile instanceof TileEntity) ((TileEntity) tile).markDirty();
@@ -569,6 +600,15 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
 
     void releaseHostedMachine(gregtech.api.metatileentity.implementations.MTEMultiBlockBase machine) {
         coordinator.releaseRemote(machine);
+    }
+
+    void removeBindingIdentity() { coordinator.removeBindingIdentity(); }
+
+    void removeDestroyedBinding(MTEMultiBlockBase machine) { coordinator.removeDestroyedBinding(machine); }
+
+    void relocateHostedBindings(java.util.Map<String, String> moved) {
+        coordinator.relocateBindings(moved);
+        markDirty();
     }
 
     @Override
@@ -733,6 +773,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.chemical_catalyst"))
             .addInfo(tr("matterblueprints.host.tooltip.chemical_tiers"))
             .addInfo(tr("matterblueprints.host.tooltip.progression"))
+            .addInfo(tr("matterblueprints.host.tooltip.effects"))
             .addInfo(tr("matterblueprints.wireless.upgrade_desc"))
             .addSeparator()
             .addInfo(tr("matterblueprints.host.tooltip.link_title"))

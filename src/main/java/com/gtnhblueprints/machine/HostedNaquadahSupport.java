@@ -6,6 +6,14 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 
 /** Maps the reactor's per-second auxiliary fuel charge onto the extended hosted recipe clock. */
 final class HostedNaquadahSupport {
+    private static final ClassValue<Boolean> REACTORS = new ClassValue<Boolean>() {
+        @Override protected Boolean computeValue(Class<?> machineClass) {
+            for (Class<?> type = machineClass; type != null; type = type.getSuperclass()) {
+                if (type.getName().equals("gregtech.common.tileentities.machines.multi.MTELargeNaquadahReactor")) return true;
+            }
+            return false;
+        }
+    };
     private static final ClassValue<java.lang.reflect.Field> OUTPUT = new ClassValue<java.lang.reflect.Field>() {
         @Override protected java.lang.reflect.Field computeValue(Class<?> type) {
             for (Class<?> current = type; current != null; current = current.getSuperclass()) {
@@ -30,10 +38,7 @@ final class HostedNaquadahSupport {
     }
 
     static boolean isReactor(MTEMultiBlockBase machine) {
-        for (Class<?> type = machine.getClass(); type != null; type = type.getSuperclass()) {
-            if (type.getName().equals("gregtech.common.tileentities.machines.multi.MTELargeNaquadahReactor")) return true;
-        }
-        return false;
+        return REACTORS.get(machine.getClass());
     }
 
     static int auxiliaryCycle(int progress, int baseDuration, int extendedDuration) {

@@ -74,10 +74,17 @@ final class HostedMachineCoordinator {
     private final HostedProgression progression = new HostedProgression();
     private final HostedYieldAccumulator yieldAccumulator = new HostedYieldAccumulator();
     private final Map<MTEMultiBlockBase, HostedJob> hosted = new IdentityHashMap<MTEMultiBlockBase, HostedJob>();
+    private final Map<String, MTEMultiBlockBase> loadedRemotes = new HashMap<>();
     private final Set<String> boundMachines = new HashSet<String>();
+    private String bindingIdentity = "";
+    private boolean bindingsIndexed;
+    private final Map<String, MTEMultiBlockBase> destroyedBindings = new HashMap<>();
     private final Set<String> persistedClaims = new HashSet<String>();
     private final Map<String, HostedJob> pendingJobs = new HashMap<String, HostedJob>();
     private final List<ExtraTask> extraTasks = new ArrayList<ExtraTask>();
+    private final Iterable<HostedJob> allConsumerJobs = new HostedCombinedView<>(hosted.values(), extraTasks,
+        task -> boundMachines.contains(task.machine), task -> task.job);
+    private final HostedWirelessGenerationBatch<MTEMultiBlockBase> wirelessGeneration = new HostedWirelessGenerationBatch<>();
 
     static final class ExtraTask {
         final String machine;
@@ -101,8 +108,13 @@ final class HostedMachineCoordinator {
     private String statusKey = "matterblueprints.host.status.no_match";
     private long energySpentThisTick;
     private boolean consumersAdvancedThisTick;
+    private BigInteger consumerMilestoneEnergy = BigInteger.ZERO;
+    private int consumerMilestoneDuration = 100;
+    private boolean aggregateVisualActive;
+    private final Set<MTEMultiBlockBase> workingVisuals = Collections.newSetFromMap(new IdentityHashMap<>());
     private long energyGeneratedThisTick;
     private int generatorsAdvancedThisTick;
+    private boolean generatorFinishedThisTick;
     private long centralPowerCapacity;
     private BigInteger generatedEnergyExact = BigInteger.ZERO;
     private long nextRecipeCheckTick;
@@ -123,6 +135,7 @@ final class HostedMachineCoordinator {
     }
 
     void refresh() {
+        synchronizeBindings();
         // A periodic rebuild is cheap and picks up a remote structure replacing one of its hatch-list instances.
         runningContext = null;
         ItemStack selector = owner.getControllerSlot();
@@ -139,13 +152,26 @@ final class HostedMachineCoordinator {
 
         Set<MTEMultiBlockBase> discovered = Collections
             .newSetFromMap(new IdentityHashMap<MTEMultiBlockBase, Boolean>());
+        List<String> missingBindings = null;
         boolean discoveredGenerator = false;
         for (String machine : boundMachines) {
             MTEMultiBlockBase remote = resolveMachine(machine);
+            if (remote == null && HostedBindingSupport.isMissingMachine(machine)) {
+                if (missingBindings == null) missingBindings = new ArrayList<>();
+                missingBindings.add(machine);
+            }
             if (!isEligible(remote, selector)) continue;
             discovered.add(remote);
             discoveredGenerator |= isSupportedGenerator(remote);
             acquire(remote);
+        }
+        if (missingBindings != null) {
+            HostedBindingData data = HostedBindingData.get(owner.getBaseMetaTileEntity().getWorld());
+            for (String machine : missingBindings) {
+                data.unbind(machine);
+                discardBinding(machine);
+            }
+            owner.markDirty();
         }
         generatorMode = discoveredGenerator;
 
@@ -160,6 +186,12 @@ final class HostedMachineCoordinator {
     }
 
     void tick(long worldTick, boolean allowNewRecipe) {
+        aggregateVisualActive = false;
+        workingVisuals.clear();
+        // A native running hook can destroy a controller while this coordinator is iterating its jobs.
+        // The persistent index is changed immediately; defer live-map removal to a safe tick boundary.
+        for (String key : destroyedBindings.keySet()) discardBinding(key);
+        destroyedBindings.clear();
         flushAntimatterOverflow();
         if (isAntimatterMode()) {
             tickAntimatter(worldTick, allowNewRecipe);
@@ -167,6 +199,8 @@ final class HostedMachineCoordinator {
         }
         energySpentThisTick = 0;
         consumersAdvancedThisTick = false;
+        consumerMilestoneEnergy = BigInteger.ZERO;
+        consumerMilestoneDuration = 100;
         energyGeneratedThisTick = 0;
         generatedEnergyExact = BigInteger.ZERO;
         generatorsAdvancedThisTick = 0;
@@ -194,14 +228,14 @@ final class HostedMachineCoordinator {
         for (Iterator<ExtraTask> iterator = extraTasks.iterator(); iterator.hasNext();) {
             ExtraTask task = iterator.next();
             if (!task.job.isActive()) { iterator.remove(); continue; }
-            MTEMultiBlockBase remote = resolveMachine(task.machine);
+            MTEMultiBlockBase remote = loadedRemotes.get(task.machine);
             if (remote != null && hosted.containsKey(remote) && isUsable(remote)) {
                 advanceRecipe(remote, task.job, worldTick, task.job.energyUsage);
             }
             if (!task.job.isActive()) iterator.remove();
         }
         if (energySpentThisTick > 0 || consumersAdvancedThisTick) {
-            progression.recordConsumerTick(energySpentThisTick, consumersAdvancedThisTick);
+            progression.recordConsumerCredit(consumerMilestoneDuration, consumerMilestoneEnergy, consumersAdvancedThisTick);
         }
         refreshActiveRemote();
         MTEMultiBlockBase assemblyPlanner = hosted.isEmpty() ? null : hosted.keySet().iterator().next();
@@ -216,13 +250,14 @@ final class HostedMachineCoordinator {
             return;
         }
         if (allowNewRecipe && !hosted.isEmpty() && worldTick >= nextRecipeCheckTick) {
-            int maximumTasks = Math.min(com.gtnhblueprints.HostedMilestoneConfig.crossRecipeTasks, getTotalParallelCapacity());
+            int totalParallelCapacity = getTotalParallelCapacity();
+            int maximumTasks = Math.min(com.gtnhblueprints.HostedMilestoneConfig.crossRecipeTasks, totalParallelCapacity);
             boolean started = false;
             Set<MTEMultiBlockBase> attempted = Collections
                 .newSetFromMap(new IdentityHashMap<MTEMultiBlockBase, Boolean>());
             Set<String> activeRecipes = getActiveRecipeKeys();
             int availableTasks = Math.max(0, maximumTasks - getRunningCount());
-            int remainingParallel = Math.max(0, getTotalParallelCapacity() - getActiveParallelCount());
+            int remainingParallel = Math.max(0, totalParallelCapacity - getActiveParallelCount());
             MTEMultiBlockBase planner = chooseRecipeExecutor(attempted);
             List<GTRecipe> recipes = planner == null ? Collections.<GTRecipe>emptyList()
                 : findRecipeCandidates(planner, activeRecipes, Math.min(availableTasks, remainingParallel));
@@ -242,7 +277,7 @@ final class HostedMachineCoordinator {
                 long lanePower = HostedRecipeScheduling.powerShare(availablePower, remainingRecipes, preferred.mEUt);
                 if (startRecipeTask(representative, laneParallel, preferred, lanePower)) {
                     started = true;
-                    remainingParallel = Math.max(0, getTotalParallelCapacity() - getActiveParallelCount());
+                    remainingParallel = Math.max(0, totalParallelCapacity - getActiveParallelCount());
                 } else {
                     attempted.add(representative);
                 }
@@ -311,6 +346,7 @@ final class HostedMachineCoordinator {
             }
         }
         progression.recordConsumerTick(0L, progressed);
+        aggregateVisualActive = progressed;
         refreshActiveRemote();
         deactivateRemotes();
     }
@@ -429,14 +465,18 @@ final class HostedMachineCoordinator {
     }
 
     boolean toggleBinding(MTEMultiBlockBase target) {
+        synchronizeBindings();
+        HostedBindingData bindings = HostedBindingData.get(owner.getBaseMetaTileEntity().getWorld());
         String key = machineKey(target);
         if (boundMachines.remove(key)) {
+            bindings.unbind(key);
             if (boundMachines.isEmpty()) fusionIgnition.paid = false;
             releaseRemote(target);
             statusKey = boundMachines.isEmpty() ? "matterblueprints.host.status.no_bindings"
                 : "matterblueprints.host.status.no_match";
             return false;
         }
+        if (!bindings.bind(bindingIdentity, key)) return false;
         boundMachines.add(key);
         refresh();
         return true;
@@ -446,7 +486,87 @@ final class HostedMachineCoordinator {
         return boundMachines.size();
     }
 
+    void synchronizeBindings() {
+        if (owner == null || owner.getBaseMetaTileEntity() == null) return;
+        IGregTechTileEntity tile = owner.getBaseMetaTileEntity();
+        if (tile.getWorld() == null || tile.getWorld().isRemote) return;
+        HostedBindingData data = HostedBindingData.get(tile.getWorld());
+        if (synchronizeBindings(data, machineKey(owner))) ((TileEntity) tile).markDirty();
+    }
+
+    boolean synchronizeBindings(HostedBindingData data, String location) {
+        if (bindingIdentity.isEmpty()) bindingIdentity = java.util.UUID.randomUUID().toString();
+        data.register(bindingIdentity, location);
+        boolean migrated = !bindingsIndexed;
+        if (!bindingsIndexed) {
+            for (String machine : boundMachines) data.bind(bindingIdentity, machine);
+            bindingsIndexed = true;
+        }
+        Set<String> current = data.members(bindingIdentity);
+        if (boundMachines.equals(current)) return migrated;
+        for (String previous : new HashSet<>(boundMachines)) {
+            if (!current.contains(previous)) discardBinding(previous);
+        }
+        boundMachines.addAll(current);
+        return true;
+    }
+
+    boolean bindingOwnedElsewhere(MTEMultiBlockBase machine) {
+        synchronizeBindings();
+        String existing = HostedBindingData.get(owner.getBaseMetaTileEntity().getWorld()).owner(machineKey(machine));
+        return existing != null && !existing.equals(bindingIdentity);
+    }
+
+    void removeBindingIdentity() {
+        if (!bindingIdentity.isEmpty()) {
+            HostedBindingData.get(owner.getBaseMetaTileEntity().getWorld()).removeHost(bindingIdentity);
+        }
+    }
+
+    void relocateBindings(Map<String, String> moved) {
+        Map<String, HostedJob> jobs = new HashMap<>();
+        Set<String> claims = new HashSet<>();
+        for (Map.Entry<String, String> entry : moved.entrySet()) {
+            HostedJob job = pendingJobs.remove(entry.getKey());
+            if (job != null) jobs.put(entry.getValue(), job);
+            if (persistedClaims.remove(entry.getKey())) claims.add(entry.getValue());
+            boundMachines.remove(entry.getKey());
+        }
+        pendingJobs.putAll(jobs);
+        persistedClaims.addAll(claims);
+        boundMachines.addAll(moved.values());
+        for (int i = 0; i < extraTasks.size(); i++) {
+            ExtraTask task = extraTasks.get(i);
+            String target = moved.get(task.machine);
+            if (target != null) extraTasks.set(i, new ExtraTask(target, task.job));
+        }
+        runningContext = null;
+        nextRecipeCheckTick = 0;
+    }
+
+    void removeDestroyedBinding(MTEMultiBlockBase machine) {
+        destroyedBindings.put(machineKey(machine), machine);
+        ((TileEntity) owner.getBaseMetaTileEntity()).markDirty();
+    }
+
+    private void discardBinding(String key) {
+        for (Iterator<MTEMultiBlockBase> iterator = hosted.keySet().iterator(); iterator.hasNext();) {
+            MTEMultiBlockBase remote = iterator.next();
+            if (remote != destroyedBindings.get(key) && !machineKey(remote).equals(key)) continue;
+            // Destruction must not restore or defer an already consumed job onto a replacement controller.
+            hosted.get(remote).clear();
+            release(remote, iterator);
+        }
+        pendingJobs.remove(key);
+        persistedClaims.remove(key);
+        extraTasks.removeIf(task -> key.equals(task.machine));
+        boundMachines.remove(key);
+        if (boundMachines.isEmpty()) fusionIgnition.paid = false;
+    }
+
     void writeToNBT(NBTTagCompound tag) {
+        tag.setString("mbHostBindingIdentity", bindingIdentity);
+        tag.setBoolean("mbHostBindingsIndexed", bindingsIndexed);
         captureAntimatterContainment();
         NBTTagCompound batch = new NBTTagCompound();
         antimatterBatch.writeToNBT(batch);
@@ -503,6 +623,9 @@ final class HostedMachineCoordinator {
     }
 
     void readFromNBT(NBTTagCompound tag) {
+        destroyedBindings.clear();
+        bindingIdentity = tag.getString("mbHostBindingIdentity");
+        bindingsIndexed = tag.getBoolean("mbHostBindingsIndexed");
         antimatterLeader = null;
         antimatterBatch = HostedJob.readFromNBT(tag.getCompoundTag("mbAntimatterBatch"));
         antimatterRollingCost = Math.max(0L, tag.getLong("mbAntimatterRollingCost"));
@@ -767,7 +890,7 @@ final class HostedMachineCoordinator {
         if (!generator) for (ExtraTask extra : extraTasks) {
             HostedJob job = extra.job;
             if (!job.isActive() || result.size() >= maximumLines) continue;
-            MTEMultiBlockBase remote = resolveMachine(extra.machine);
+            MTEMultiBlockBase remote = loadedRemotes.get(extra.machine);
             result.add(HostedHudLine.text("matterblueprints.host.info.task",
                 ++task, remote == null ? extra.machine : getJobDisplayName(remote, job),
                 HostedNumberFormatter.format(job.parallels), formatSeconds(job.progress), formatSeconds(job.maxProgress),
@@ -911,10 +1034,9 @@ final class HostedMachineCoordinator {
         return result;
     }
 
-    private List<HostedJob> consumerJobs() {
-        List<HostedJob> jobs = new ArrayList<HostedJob>(hosted.values());
-        for (ExtraTask task : extraTasks) if (boundMachines.contains(task.machine)) jobs.add(task.job);
-        return jobs;
+    private Iterable<HostedJob> consumerJobs() {
+        if (extraTasks.isEmpty()) return hosted.values();
+        return allConsumerJobs;
     }
 
     private List<GTRecipe> findRecipeCandidates(MTEMultiBlockBase remote, Set<String> excluded, int limit) {
@@ -1059,13 +1181,20 @@ final class HostedMachineCoordinator {
         for (MTEMultiBlockBase remote : hosted.keySet()) {
             IGregTechTileEntity tile = remote.getBaseMetaTileEntity();
             if (tile == null || !remote.isValid()) continue;
-            tile.disableWorking();
-            tile.setActive(false);
+            if (tile.isAllowedToWork()) tile.disableWorking();
+            if (owner.hostedEffectsEnabled()) {
+                boolean visible = isUsable(remote) && (aggregateVisualActive || workingVisuals.contains(remote));
+                HostedVisuals.update(remote, visible, tile.getWorld().getTotalWorldTime());
+            } else HostedVisuals.stop(remote);
             remote.mEUt = 0;
             REMOTE_HOOKS.get(remote.getClass()).setLongEUt(remote, 0L);
             tile.setShutDownReason(gregtech.api.util.shutdown.ShutDownReasonRegistry.NONE);
             tile.setShutdownStatus(false);
         }
+    }
+
+    void stopHostedVisuals() {
+        for (MTEMultiBlockBase remote : hosted.keySet()) HostedVisuals.stop(remote);
     }
 
     private void scheduleNextRecipeCheck(long worldTick, boolean started) {
@@ -1127,9 +1256,11 @@ final class HostedMachineCoordinator {
         }
         HostedJob restoredJob = pendingJobs.remove(key);
         hosted.put(remote, restoredJob == null ? new HostedJob() : restoredJob);
+        loadedRemotes.put(key, remote);
         if (restoredJob != null && restoredJob.isActive() && !isSupportedGenerator(remote)) activeRemote = remote;
         persistedClaims.add(key);
         tile.disableWorking();
+        HostedVisuals.update(remote, false, tile.getWorld().getTotalWorldTime());
         tile.setActive(false);
         // Hosting owns energy accounting, so a power-loss marker left immediately before attachment is stale.
         tile.setShutDownReason(gregtech.api.util.shutdown.ShutDownReasonRegistry.NONE);
@@ -1138,6 +1269,10 @@ final class HostedMachineCoordinator {
     }
 
     private void release(MTEMultiBlockBase remote, Iterator<MTEMultiBlockBase> iterator) {
+        // Identity removal also handles GT clearing the base tile before deferred destruction cleanup.
+        if (!loadedRemotes.remove(machineKey(remote), remote)) {
+            loadedRemotes.values().removeIf(value -> value == remote);
+        }
         if (remote == antimatterLeader) {
             captureAntimatterContainment();
             antimatterLeader = null;
@@ -1158,13 +1293,24 @@ final class HostedMachineCoordinator {
         iterator.remove();
         persistedClaims.remove(machineKey(remote));
         if (!retainDeferred) pendingJobs.remove(machineKey(remote));
+        HostedVisuals.release(remote);
         IGregTechTileEntity tile = remote.getBaseMetaTileEntity();
-        if (tile != null && remote.isValid()) tile.enableWorking();
+        if (tile != null && remote.isValid()) {
+            boolean active = remote.mMaxProgresstime > 0;
+            if (tile.isActive() != active) tile.setActive(active);
+            tile.enableWorking();
+        }
     }
 
     private String machineKey(MTEMultiBlockBase machine) {
         IGregTechTileEntity tile = machine.getBaseMetaTileEntity();
-        if (tile == null || tile.getWorld() == null) return "invalid:" + System.identityHashCode(machine);
+        if (tile == null || tile.getWorld() == null) {
+            // GT clears the base tile during destruction. Keep the original key until deferred cleanup.
+            for (Map.Entry<String, MTEMultiBlockBase> removed : destroyedBindings.entrySet()) {
+                if (removed.getValue() == machine) return removed.getKey();
+            }
+            return "invalid:" + System.identityHashCode(machine);
+        }
         return tile.getWorld().provider.dimensionId + ":" + tile.getXCoord() + ":" + tile.getYCoord() + ":" + tile.getZCoord();
     }
 
@@ -1178,35 +1324,34 @@ final class HostedMachineCoordinator {
         int units = progression.applyParallelBonus(hosted.size(), hosted.size());
         for (HostedJob job : hosted.values()) if (job.isActive()) units -= job.assemblyUnits;
         int slots = progression.getMaximumTasks(hosted.size()) - getRunningCount();
-        boolean started = false;
-        Set<MTEMultiBlockBase> used = Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<String> active = getActiveRecipeKeys();
-        for (int i = 0; i < recipes.size() && slots > 0 && units > 0; i++) {
-            GTRecipe.RecipeAssemblyLine recipe = recipes.get(i);
-            String key = "assembly:" + recipe.getPersistentHash();
-            if (active.contains(key)) continue;
-            MTEMultiBlockBase remote = chooseRepresentative(used);
-            if (remote == null) break;
-            long power = getAvailableConsumerPowerForNewJob();
-            if (power <= 0) break;
-            int laneUnits = Math.max(1, units / Math.min(slots, recipes.size() - i));
-            if (!startEquivalentAssembly(remote, recipe, recipes, key, laneUnits, power)) continue;
-            used.add(remote);
-            active.add(key);
-            units -= hosted.get(remote).assemblyUnits;
-            slots--;
-            started = true;
-        }
+        boolean started = HostedAssemblyScheduling.schedule(recipes, units, slots,
+            (recipe, allocation) -> tryAssemblyExecutors(recipe, recipes, allocation, true),
+            (recipe, allocation) -> tryAssemblyExecutors(recipe, recipes, allocation, false));
         if (!started && getRunningCount() == 0) statusKey = "matterblueprints.host.status.assembly_no_recipe";
         else if (started) statusKey = "matterblueprints.host.status.hosting";
         refreshActiveRemote();
         scheduleNextRecipeCheck(worldTick, started);
     }
 
-    private boolean startEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
-        List<GTRecipe.RecipeAssemblyLine> researched, String key, int units, long availablePower) {
+    private int tryAssemblyExecutors(GTRecipe.RecipeAssemblyLine recipe,
+        List<GTRecipe.RecipeAssemblyLine> researched, int units, boolean simulate) {
+        long power = getAvailableConsumerPowerForNewJob();
+        if (power <= 0) return 0;
+        Set<MTEMultiBlockBase> attempted = Collections.newSetFromMap(new IdentityHashMap<>());
+        MTEMultiBlockBase remote;
+        while ((remote = chooseRepresentative(attempted)) != null) {
+            attempted.add(remote);
+            int occupied = startEquivalentAssembly(remote, recipe, researched,
+                "assembly:" + recipe.getPersistentHash(), units, power, simulate);
+            if (occupied > 0) return occupied;
+        }
+        return 0;
+    }
+
+    private int startEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
+        List<GTRecipe.RecipeAssemblyLine> researched, String key, int units, long availablePower, boolean simulate) {
         VoltageTierSnapshot voltage = new VoltageTierSnapshot(remote, progression.hasVoltageExtension());
-        boolean started = false;
+        int occupied = 0;
         owner.setCheckRecipeResult(CheckRecipeResultRegistry.SUCCESSFUL);
         try {
             owner.startRecipeProcessing();
@@ -1221,19 +1366,17 @@ final class HostedMachineCoordinator {
                     List<ItemStack> inputs = new ArrayList<>(java.util.Arrays.asList(inventory.getItemInputs()));
                     ItemStack[] shared = hatch.getSharedItems();
                     if (shared != null) Collections.addAll(inputs, shared);
-                    if (commitEquivalentAssembly(remote, recipe, bufferRecipes, key, units, availablePower,
+                    occupied = commitEquivalentAssembly(remote, recipe, bufferRecipes, key, units, availablePower,
                         HostedAssemblySupport.uniqueItems(inputs), HostedAssemblySupport.uniqueFluids(
-                            java.util.Arrays.asList(inventory.getFluidInputs())))) {
-                        started = true;
-                        break;
-                    }
+                            java.util.Arrays.asList(inventory.getFluidInputs())), simulate);
+                    if (occupied > 0) break;
                 }
-                if (started) break;
+                if (occupied > 0) break;
             }
-            if (!started) started = commitEquivalentAssembly(remote, recipe, researched, key, units, availablePower,
+            if (occupied == 0) occupied = commitEquivalentAssembly(remote, recipe, researched, key, units, availablePower,
                 HostedAssemblySupport.uniqueItems(owner.getStoredInputs()),
-                HostedAssemblySupport.uniqueFluids(owner.getStoredFluids()));
-            if (started) owner.updateSlots();
+                HostedAssemblySupport.uniqueFluids(owner.getStoredFluids()), simulate);
+            if (occupied > 0 && !simulate) owner.updateSlots();
         } finally {
             try {
                 owner.endRecipeProcessing();
@@ -1241,20 +1384,22 @@ final class HostedMachineCoordinator {
                 voltage.restore();
             }
         }
-        if (started && !owner.getCheckRecipeResult().wasSuccessful()) {
-            hosted.get(remote).clear();
-            return false;
+        if (occupied > 0 && !owner.getCheckRecipeResult().wasSuccessful()) {
+            if (!simulate) hosted.get(remote).clear();
+            return 0;
         }
-        return started;
+        return occupied;
     }
 
-    private boolean commitEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
+    private int commitEquivalentAssembly(MTEMultiBlockBase remote, GTRecipe.RecipeAssemblyLine recipe,
         List<GTRecipe.RecipeAssemblyLine> researched, String key, int units, long availablePower,
-        ItemStack[] items, FluidStack[] fluids) {
-        if (!HostedAssemblySelection.mayStart(recipe, researched, items, fluids)) return false;
+        ItemStack[] items, FluidStack[] fluids, boolean simulate) {
+        if (!HostedAssemblySelection.mayStart(recipe, researched, items, fluids)) return 0;
         HostedAssemblySupport.Prepared prepared = HostedAssemblySupport.prepare(owner, remote, recipe, units,
             availablePower, progression, items, fluids);
-        if (prepared == null) return false;
+        if (prepared == null) return 0;
+        int occupied = prepared.units(units);
+        if (simulate) return occupied;
         HostedJob job = hosted.get(remote);
         job.progress = 0;
         job.maxProgress = HostedProcessingSettings.duration(prepared.calculator.getDuration(),
@@ -1266,7 +1411,7 @@ final class HostedMachineCoordinator {
         job.energyUsage = prepared.usage;
         job.recipeKey = key;
         job.equivalentAssembly = true;
-        job.assemblyUnits = (int) Math.min(units, ((long) job.parallels + prepared.base - 1) / prepared.base);
+        job.assemblyUnits = occupied;
         job.reservedParallel = (int) Math.min(Integer.MAX_VALUE, (long) job.assemblyUnits * prepared.base);
         job.recipeLongEUt = -prepared.usage;
         job.recipeEUt = (int) -Math.min(Integer.MAX_VALUE, prepared.usage);
@@ -1274,7 +1419,7 @@ final class HostedMachineCoordinator {
         applyConsumerBonuses(job, true);
         prepared.plan.consume(items, fluids);
         job.hideProgressFromRemote(remote);
-        return true;
+        return occupied;
     }
 
     private boolean startRecipe(MTEMultiBlockBase remote, int parallelCapacity, GTRecipe preferred,
@@ -1441,6 +1586,9 @@ final class HostedMachineCoordinator {
      * full multiblock tick for every remote machine.
      */
     private void tickGenerators(long worldTick, boolean allowNewRecipe) {
+        generatorFinishedThisTick = false;
+        // A native hook may have thrown before the previous tick reached its flush; no credit was committed.
+        wirelessGeneration.clear();
         if (!owner.isWirelessMode() && (centralDynamoHatches.isEmpty() || centralPowerCapacity <= 0)) {
             statusKey = "matterblueprints.host.status.no_central_dynamo";
             return;
@@ -1452,18 +1600,31 @@ final class HostedMachineCoordinator {
         statusKey = owner.isWirelessMode() ? "matterblueprints.wireless.generating"
             : "matterblueprints.host.status.hosting_generators";
 
+        boolean recipeCheckDue = false;
         for (Map.Entry<MTEMultiBlockBase, HostedJob> entry : hosted.entrySet()) {
             MTEMultiBlockBase remote = entry.getKey();
             HostedJob job = entry.getValue();
-            if (!job.isActive()) continue;
+            if (!job.isActive()) {
+                recipeCheckDue |= worldTick >= job.nextRecipeCheckTick;
+                continue;
+            }
             if (!isUsable(remote)) {
                 job.restoreToRemote(remote);
                 continue;
             }
             advanceGenerator(remote, job, worldTick);
+            recipeCheckDue |= !job.isActive() && worldTick >= job.nextRecipeCheckTick;
         }
 
-        if (allowNewRecipe) {
+        wirelessGeneration.flush(owner::generateWirelessEnergy,
+            (remote, amount) -> acceptNaquadahOutput(hosted.get(remote), amount),
+            remote -> afterNaquadahOutput(remote, hosted.get(remote), worldTick));
+
+        // Wireless completion occurs in the flush callback, after the advancement traversal above.
+        // Mark its deadline there so a completed reactor can restart in this same tick.
+        recipeCheckDue |= generatorFinishedThisTick;
+        generatorFinishedThisTick = false;
+        if (allowNewRecipe && recipeCheckDue) {
             List<MTEMultiBlockBase> idleTurbines = idleTurbines(worldTick);
             Map<MTEMultiBlockBase, HostedTurbineFlowScheduler.FlowPlan> turbinePlans = idleTurbines.isEmpty()
                 ? Collections.<MTEMultiBlockBase, HostedTurbineFlowScheduler.FlowPlan>emptyMap()
@@ -1486,6 +1647,7 @@ final class HostedMachineCoordinator {
         if (energyGeneratedThisTick > 0) {
             progression.recordGeneratorTick(generatedEnergyExact, generatorsAdvancedThisTick);
         }
+        refreshActiveRemote();
     }
 
     private List<MTEMultiBlockBase> idleTurbines(long worldTick) {
@@ -1597,6 +1759,7 @@ final class HostedMachineCoordinator {
             }
             invokeIncrementProgressTime(remote);
             job.progress = remote.mProgresstime;
+            workingVisuals.add(remote);
             continued = true;
         } finally {
             dynamoSnapshot.restore();
@@ -1613,41 +1776,27 @@ final class HostedMachineCoordinator {
         HostedNaquadahCycle cycle = job.naquadahCycle;
         if (cycle.finished()) { finishGeneratorRecipe(remote, job, worldTick); return; }
         job.exposeProgressToRemote(remote);
-        HatchSnapshot io = new HatchSnapshot(remote);
-        DynamoEnergySnapshot dynamos = new DynamoEnergySnapshot(remote);
         try {
             if (worldTick % MAINTENANCE_REFRESH_TICKS == 0) remote.checkMaintenance();
             if (!checkMachinePartAndMaintenance(remote, worldTick)) return;
-            io.useOwnerIO(owner, remote);
-            // Settle a bounded number of original auxiliary periods. Paid energy is persisted even if
-            // a later period must wait for liquid air. No wireless output is credited while settling.
-            for (int i = 0; i < 64 && !cycle.ready(); i++) {
-                int index = cycle.auxiliaryIndex();
-                long output = index <= job.generatorAuxiliaryCycle ? job.generatorAuxiliaryOutput : 0;
-                if (output <= 0) output = HostedNaquadahSupport.charge(remote,
-                    () -> REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote));
-                if (output <= 0) {
-                    statusKey = "matterblueprints.host.status.naquadah_fuel";
-                    return;
-                }
-                job.generatorAuxiliaryCycle = index;
-                job.generatorAuxiliaryOutput = output;
-                cycle.settle(output);
-            }
+            // Only auxiliary settlement invokes the native fuel/dynamo hook. A paid cycle no longer needs
+            // per-tick I/O swaps, dynamo snapshots or scans of physical output hatches.
+            if (!cycle.ready()) settleNaquadahFuel(remote, job);
             if (!cycle.ready()) {
                 statusKey = "matterblueprints.host.status.naquadah_fuel";
                 return;
             }
-            cycle.configure(owner.isWirelessMode());
-            long remoteCapacity = owner.isWirelessMode() ? getDynamoCapacity(remote)
-                : Math.min(getDynamoCapacity(remote), centralPowerCapacity);
+            boolean wireless = owner.isWirelessMode();
+            cycle.configure(wireless);
+            long remoteCapacity = wireless ? 0L : Math.min(getDynamoCapacity(remote), centralPowerCapacity);
             job.maxProgress = (int) Math.min(Integer.MAX_VALUE,
                 (long) job.progress + Math.max(1, cycle.remainingTicks(remoteCapacity)));
             BigInteger amount = cycle.nextOutput(remoteCapacity);
-            if (amount.signum() == 0 && !owner.isWirelessMode()) return;
-            if (owner.isWirelessMode()) {
-                if (!owner.canGenerateWirelessly() || (amount.signum() > 0 && !owner.generateWirelessEnergy(amount))) return;
+            if (wireless) {
+                wirelessGeneration.add(remote, amount);
+                return;
             } else {
+                if (amount.signum() == 0) return;
                 long power = amount.longValueExact();
                 long free = Math.min(getCentralDynamoFreeCapacity(), Math.max(0L, centralPowerCapacity - energyGeneratedThisTick));
                 if (free < power) {
@@ -1658,22 +1807,65 @@ final class HostedMachineCoordinator {
                 if (accepted <= 0) return;
                 amount = BigInteger.valueOf(accepted);
             }
-            cycle.accept(amount);
-            energyGeneratedThisTick = saturatingAdd(energyGeneratedThisTick, HostedNaquadahCycle.displayPower(amount));
-            generatedEnergyExact = generatedEnergyExact.add(amount);
-            generatorsAdvancedThisTick++;
-            job.energyUsage = HostedNaquadahCycle.displayPower(amount);
-            job.progress = (int) Math.min(Integer.MAX_VALUE - 1L, (long) job.progress + 1);
+            acceptNaquadahOutput(job, amount);
+            workingVisuals.add(remote);
             if (!remote.polluteEnvironment(remote.getPollutionPerTick(remote.getControllerSlot()))) {
                 remote.stopMachine();
                 job.clear();
+                return;
+            }
+        } finally {
+            job.hideProgressFromRemote(remote);
+        }
+        if (cycle.finished()) finishGeneratorRecipe(remote, job, worldTick);
+    }
+
+    private void settleNaquadahFuel(MTEMultiBlockBase remote, HostedJob job) {
+        HatchSnapshot io = new HatchSnapshot(remote);
+        DynamoEnergySnapshot dynamos = new DynamoEnergySnapshot(remote);
+        try {
+            io.useOwnerIO(owner, remote);
+            // Bound native auxiliary work per machine/tick; preserve already-paid periods on a later shortage.
+            for (int i = 0; i < 64 && !job.naquadahCycle.ready(); i++) {
+                int index = job.naquadahCycle.auxiliaryIndex();
+                long output = index <= job.generatorAuxiliaryCycle ? job.generatorAuxiliaryOutput : 0;
+                if (output <= 0) output = HostedNaquadahSupport.charge(remote,
+                    () -> REMOTE_HOOKS.get(remote.getClass()).getGeneratedPower(remote));
+                if (output <= 0) return;
+                job.generatorAuxiliaryCycle = index;
+                job.generatorAuxiliaryOutput = output;
+                job.naquadahCycle.settle(output);
             }
         } finally {
             dynamos.restore();
             io.restore(remote);
+        }
+    }
+
+    private void acceptNaquadahOutput(HostedJob job, BigInteger amount) {
+        job.naquadahCycle.accept(amount);
+        long display = HostedNaquadahCycle.displayPower(amount);
+        energyGeneratedThisTick = saturatingAdd(energyGeneratedThisTick, display);
+        generatedEnergyExact = generatedEnergyExact.add(amount);
+        generatorsAdvancedThisTick++;
+        job.energyUsage = display;
+        job.progress = (int) Math.min(Integer.MAX_VALUE - 1L, (long) job.progress + 1);
+    }
+
+    private void afterNaquadahOutput(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
+        workingVisuals.add(remote);
+        job.exposeProgressToRemote(remote);
+        try {
+            if (!remote.polluteEnvironment(remote.getPollutionPerTick(remote.getControllerSlot()))) {
+                remote.stopMachine();
+                job.clear();
+                generatorFinishedThisTick = true;
+                return;
+            }
+        } finally {
             job.hideProgressFromRemote(remote);
         }
-        if (cycle.finished()) finishGeneratorRecipe(remote, job, worldTick);
+        if (job.naquadahCycle.finished()) finishGeneratorRecipe(remote, job, worldTick);
     }
 
     private void finishGeneratorRecipe(MTEMultiBlockBase remote, HostedJob job, long worldTick) {
@@ -1699,6 +1891,7 @@ final class HostedMachineCoordinator {
         remote.recipesDone++;
         remote.setLastWorkingTick(remote.getTotalRunTime());
         job.clear();
+        generatorFinishedThisTick = true;
         job.nextRecipeCheckTick = worldTick;
         job.idleRecipeCheckDelay = 0;
         if (!itemsAccepted || !fluidsAccepted) statusKey = "matterblueprints.host.status.output_full";
@@ -1722,6 +1915,9 @@ final class HostedMachineCoordinator {
             long supplied = owner.isWirelessMode()
                 ? (drainCentralEnergy(energyUsage) ? energyUsage : 0L)
                 : drainCentralEnergyUpTo(Math.min(energyUsage, allocatedPower));
+            // Legacy in-flight jobs have no original pricing: finish them at their saved actual rate.
+            if (job.milestoneCredit == null) job.milestoneCredit = new HostedMilestoneCredit(100, energyUsage, energyUsage);
+            consumerMilestoneEnergy = consumerMilestoneEnergy.add(job.milestoneCredit.paid(supplied));
             job.energyCredit = Math.min(energyUsage, saturatingAdd(job.energyCredit, supplied));
             if (job.energyCredit < energyUsage) {
                 statusKey = owner.isWirelessMode() ? "matterblueprints.wireless.no_power"
@@ -1760,6 +1956,16 @@ final class HostedMachineCoordinator {
             }
             if (job.progress > previousProgress) {
                 consumersAdvancedThisTick = true;
+                consumerMilestoneDuration = Math.min(consumerMilestoneDuration, job.milestoneCredit.durationPercent);
+                if (!job.plasmaMembers.isEmpty()) {
+                    for (String member : job.plasmaMembers) {
+                        MTEMultiBlockBase participant = loadedRemotes.get(member);
+                        if (participant != null) workingVisuals.add(participant);
+                    }
+                } else {
+                    // Generic/assembly jobs consume the shared bank's aggregate capacity.
+                    aggregateVisualActive = true;
+                }
             }
             continued = true;
         } finally {
@@ -1821,9 +2027,7 @@ final class HostedMachineCoordinator {
     }
 
     private RemoteRunningContext getRunningContext(MTEMultiBlockBase remote) {
-        if (runningContext == null || runningContext.representative != remote) {
-            runningContext = new RemoteRunningContext(remote, hosted.keySet());
-        }
+        if (runningContext == null) runningContext = new RemoteRunningContext();
         return runningContext;
     }
 
@@ -1860,7 +2064,9 @@ final class HostedMachineCoordinator {
 
     private void applyConsumerBonuses(HostedJob job, boolean speedApplied) {
         if (!speedApplied) job.maxProgress = progression.applyConsumerDuration(job.maxProgress);
+        long nativePower = job.energyUsage;
         job.energyUsage = progression.applyConsumerPower(job.energyUsage);
+        job.milestoneCredit = new HostedMilestoneCredit(progression.durationPercent(), nativePower, job.energyUsage);
         yieldAccumulator.apply(job.outputItems, job.outputFluids, progression.getYieldQuarterBonus());
     }
 
@@ -1919,11 +2125,13 @@ final class HostedMachineCoordinator {
             centralDynamoHatches.addAll(owner.getExoticDynamoHatches());
             centralPowerCapacity = getDynamoCapacity(centralDynamoHatches);
             if (owner.isWirelessMode()) {
-                centralPowerCapacity = 0;
-                for (MTEMultiBlockBase remote : hosted.keySet()) {
-                    centralPowerCapacity = saturatingAdd(centralPowerCapacity, getDynamoCapacity(remote));
-                }
                 if (isUnlimitedWirelessGeneration()) centralPowerCapacity = Long.MAX_VALUE;
+                else {
+                    centralPowerCapacity = 0;
+                    for (MTEMultiBlockBase remote : hosted.keySet()) {
+                        centralPowerCapacity = saturatingAdd(centralPowerCapacity, getDynamoCapacity(remote));
+                    }
+                }
             }
         } else {
             centralEnergyHatches.addAll(owner.getExoticAndNormalEnergyHatchList());
@@ -2668,18 +2876,14 @@ final class HostedMachineCoordinator {
      */
     private static final class RemoteRunningContext {
 
-        private final MTEMultiBlockBase representative;
-        private final RemoteHooks hooks;
+        private RemoteHooks hooks;
         private int savedEUt;
         private long savedLongEUt;
         private boolean staged;
 
-        RemoteRunningContext(MTEMultiBlockBase representative, Set<MTEMultiBlockBase> machines) {
-            this.representative = representative;
-            hooks = REMOTE_HOOKS.get(representative.getClass());
-        }
-
         void stage(MTEMultiBlockBase remote, long amount) {
+            if (staged) throw new IllegalStateException("Nested hosted running context");
+            hooks = REMOTE_HOOKS.get(remote.getClass());
             savedEUt = remote.mEUt;
             savedLongEUt = hooks.getLongEUt(remote);
             remote.mEUt = 0;
@@ -2740,6 +2944,7 @@ final class HostedMachineCoordinator {
         private String recipeKey = "";
         private long energyUsage;
         private long energyCredit;
+        private HostedMilestoneCredit milestoneCredit;
         private int recipeEUt;
         private long recipeLongEUt;
         private long nextRecipeCheckTick;
@@ -2800,6 +3005,7 @@ final class HostedMachineCoordinator {
         }
 
         void clear() {
+            milestoneCredit = null;
             antimatterCycle = false;
             plasmaMatrix = false;
             plasmaMembers.clear();
@@ -2836,6 +3042,8 @@ final class HostedMachineCoordinator {
         }
 
         void writeToNBT(NBTTagCompound tag) {
+            if (milestoneCredit != null) tag.setTag("milestoneCredit", milestoneCredit.write());
+            else tag.removeTag("milestoneCredit");
             tag.setBoolean("antimatterCycle", antimatterCycle);
             tag.setBoolean("plasmaMatrix", plasmaMatrix);
             NBTTagList members = new NBTTagList();
@@ -2869,6 +3077,7 @@ final class HostedMachineCoordinator {
 
         static HostedJob readFromNBT(NBTTagCompound tag) {
             HostedJob job = new HostedJob();
+            if (tag.hasKey("milestoneCredit", 10)) job.milestoneCredit = HostedMilestoneCredit.read(tag.getCompoundTag("milestoneCredit"));
             job.antimatterCycle = tag.getBoolean("antimatterCycle");
             job.plasmaMatrix = tag.getBoolean("plasmaMatrix");
             NBTTagList members = tag.getTagList("plasmaMembers", 8);

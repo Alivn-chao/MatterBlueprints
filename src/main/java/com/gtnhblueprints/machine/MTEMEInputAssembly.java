@@ -50,7 +50,7 @@ public class MTEMEInputAssembly extends MTEQuantizedMEInputBus {
         gregtech.common.tileentities.machines.MTEHatchInputME.Slot[] viewSlots() { return slots; }
     }
     public MTEMEInputAssembly(int id, String name, String regional) { super(id, name, regional); }
-    private MTEMEInputAssembly(String name, int tier, String[] description, ITexture[][][] textures) { super(name, tier, description, textures); }
+    protected MTEMEInputAssembly(String name, int tier, String[] description, ITexture[][][] textures) { super(name, tier, description, textures); }
     @Override public MetaTileEntity newMetaEntity(IGregTechTileEntity tile) { return new MTEMEInputAssembly(mName, mTier, mDescriptionArray, mTextures); }
     @Override public ITexture[] getTexturesActive(ITexture base) { return MEPortTextures.input(base, true, true); }
     @Override public boolean needsPeriodicChecks() { return true; }
@@ -68,7 +68,10 @@ public class MTEMEInputAssembly extends MTEQuantizedMEInputBus {
     }
     @Override public FluidTankInfo[] getTankInfo(ForgeDirection side) { return fluids.getTankInfo(side); }
     private void writeFluids(NBTTagCompound tag) {
-        NBTTagCompound fluidTag = new NBTTagCompound(); fluids.writeMarkedConfiguration(fluidTag); tag.setTag("mbFluidMarks", fluidTag);
+        NBTTagCompound fluidTag = new NBTTagCompound();
+        fluids.writeMarkedConfiguration(fluidTag);
+        if (!fluidTag.hasNoTags()) tag.setTag("mbFluidMarks", fluidTag);
+        else tag.removeTag("mbFluidMarks");
     }
     @Override public void saveNBTData(NBTTagCompound tag) { super.saveNBTData(tag); writeFluids(tag); }
     @Override public void loadNBTData(NBTTagCompound tag) { super.loadNBTData(tag); fluids.readMarkedConfiguration(tag.getCompoundTag("mbFluidMarks")); }

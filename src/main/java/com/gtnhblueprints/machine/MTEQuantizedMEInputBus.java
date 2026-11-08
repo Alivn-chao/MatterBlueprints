@@ -54,10 +54,13 @@ public class MTEQuantizedMEInputBus extends MTEHatchInputBusME {
         for (int i = 0; i < SLOT_COUNT; i++) markedAmounts.apply(i, slots[i]);
     }
     @Override public void saveNBTData(NBTTagCompound tag) { super.saveNBTData(tag); markedAmounts.save(tag); }
-    @Override public void loadNBTData(NBTTagCompound tag) { super.loadNBTData(tag); markedAmounts.load(tag); }
+    @Override public void loadNBTData(NBTTagCompound tag) {
+        super.loadNBTData(tag);
+        if (!tag.hasKey("minAutoPullStackSize")) minAutoPullStackSize = 1;
+        markedAmounts.load(tag);
+    }
     void writeMarkedConfiguration(NBTTagCompound tag) {
         markedAmounts.save(tag);
-        tag.setInteger("version", 1);
         NBTTagList configured = new NBTTagList();
         for (int i = 0; i < slots.length; i++) {
             if (slots[i] == null) continue;
@@ -66,11 +69,18 @@ public class MTEQuantizedMEInputBus extends MTEHatchInputBusME {
             slot.setInteger("index", i);
             configured.appendTag(slot);
         }
-        tag.setTag("slots", configured);
+        if (configured.tagCount() > 0) {
+            tag.setInteger("version", 1);
+            tag.setTag("slots", configured);
+        }
+
     }
     @Override public void setItemNBT(NBTTagCompound tag) {
         super.setItemNBT(tag);
         writeMarkedConfiguration(tag);
+        if (autoPullItemList) tag.setBoolean("autoStock", true);
+        if (minAutoPullStackSize != 1) tag.setInteger("minAutoPullStackSize", minAutoPullStackSize);
+        if (autoPullRefreshTime != 100) tag.setInteger("refreshTime", autoPullRefreshTime);
     }
     @Override public String getCopiedDataIdentifier(net.minecraft.entity.player.EntityPlayer player) { return "matterblueprints.marked.items"; }
     @Override public NBTTagCompound getCopiedData(net.minecraft.entity.player.EntityPlayer player) {
@@ -100,9 +110,7 @@ public class MTEQuantizedMEInputBus extends MTEHatchInputBusME {
                 addFluidMarks(content, panel, manager);
                 content.child(Flow.row().coverChildren().marginTop(5)
                     .child(createCircuitSlot(manager))
-                    .child(new com.cleanroommc.modularui.widgets.slot.ItemSlot().slot(
-                        new com.cleanroommc.modularui.widgets.slot.ModularSlot(machine.inventoryHandler, machine.getManualSlot())
-                            .singletonSlotGroup())));
+                    .child(MEMarkingControls.create(MTEQuantizedMEInputBus.this, panel, manager)));
                 return content;
             }
         }.build(data, sync, settings);

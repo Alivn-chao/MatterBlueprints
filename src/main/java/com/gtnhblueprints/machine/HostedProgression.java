@@ -13,6 +13,23 @@ final class HostedProgression {
     private long workUnits;
     private long generatorWorkTickRemainder;
     private BigInteger energyThroughput = BigInteger.ZERO;
+    private BigInteger timeCreditRemainder = BigInteger.ZERO;
+    private BigInteger energyCreditRemainder = BigInteger.ZERO;
+
+    void recordConsumerCredit(int durationPercent, BigInteger scaledEnergy, boolean progressed) {
+        if (progressed) {
+            BigInteger[] time = timeCreditRemainder.add(HostedMilestoneCredit.timeRate(durationPercent))
+                .divideAndRemainder(HostedMilestoneCredit.SCALE);
+            productiveTicks = saturatingAdd(productiveTicks, time[0].min(BigInteger.valueOf(Long.MAX_VALUE)).longValue());
+            timeCreditRemainder = time[1];
+        }
+        if (scaledEnergy.signum() > 0) {
+            BigInteger[] energy = energyCreditRemainder.add(scaledEnergy).divideAndRemainder(HostedMilestoneCredit.SCALE);
+            energyThroughput = energyThroughput.add(energy[0]);
+            energyCreditRemainder = energy[1];
+        }
+        hasPermanentPlasmaFuelDiscount();
+    }
 
     void recordConsumerTick(long consumedEU) {
         recordConsumerTick(consumedEU, true);
@@ -185,7 +202,7 @@ final class HostedProgression {
         return level >= HostedMilestoneConfig.energy.length ? null : HostedMilestoneConfig.energy[level];
     }
 
-    private int durationPercent() {
+    int durationPercent() {
         int tier = getSpeedTier();
         return tier == 0 ? 100 : HostedMilestoneConfig.durationPercent[tier - 1];
     }
@@ -211,6 +228,8 @@ final class HostedProgression {
         tag.setLong("workUnits", workUnits);
         tag.setLong("generatorWorkRemainder", generatorWorkTickRemainder);
         tag.setByteArray("energyThroughput", energyThroughput.toByteArray());
+        tag.setByteArray("timeCreditRemainder", timeCreditRemainder.toByteArray());
+        tag.setByteArray("energyCreditRemainder", energyCreditRemainder.toByteArray());
     }
 
     void readFromNBT(NBTTagCompound tag) {
@@ -221,6 +240,14 @@ final class HostedProgression {
         byte[] energy = tag.getByteArray("energyThroughput");
         energyThroughput = energy.length == 0 ? BigInteger.ZERO : new BigInteger(energy);
         if (energyThroughput.signum() < 0) energyThroughput = BigInteger.ZERO;
+        timeCreditRemainder = readCreditRemainder(tag, "timeCreditRemainder");
+        energyCreditRemainder = readCreditRemainder(tag, "energyCreditRemainder");
+    }
+
+    private static BigInteger readCreditRemainder(NBTTagCompound tag, String key) {
+        byte[] saved = tag.getByteArray(key);
+        return saved.length == 0 ? BigInteger.ZERO
+            : new BigInteger(saved).max(BigInteger.ZERO).mod(HostedMilestoneCredit.SCALE);
     }
 
     private void addEnergy(long amount) {

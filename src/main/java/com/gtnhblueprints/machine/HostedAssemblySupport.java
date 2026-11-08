@@ -52,7 +52,9 @@ final class HostedAssemblySupport {
 
     static OverclockCalculator calculator(int recipeEUt, int duration, long voltage, long amps, int mode) {
         OverclockCalculator calculator = new OverclockCalculator().setRecipeEUt(recipeEUt).setDuration(duration)
-            .setEUt(voltage).setAmperage(amps).setAmperageOC(mode != 0);
+            // Laser OC also needs total amperage: otherwise GT clamps usable amps to current parallel.
+            // Ordinary assembly explicitly disables amperage OC in prepare() below.
+            .setEUt(voltage).setAmperage(amps).setAmperageOC(true);
         if (mode == 0) calculator.setLaserOC(true)
             .setMaxRegularOverclocks(Math.max(0, GTUtility.getTier(voltage) - GTUtility.getTier(recipeEUt)));
         if (mode == 2) calculator.enablePerfectOC();
@@ -135,6 +137,10 @@ final class HostedAssemblySupport {
             this.plan = plan;
             this.usage = usage;
             this.base = base;
+        }
+
+        int units(int allocated) {
+            return (int) Math.min(allocated, ((long) helper.getCurrentParallel() + base - 1) / base);
         }
     }
 }

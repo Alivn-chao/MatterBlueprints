@@ -175,7 +175,8 @@ public class HostedPlasmaForgeCompatibilityTest {
         }
         for (Object entry : source.methods) {
             org.objectweb.asm.tree.MethodNode method = (org.objectweb.asm.tree.MethodNode) entry;
-            if (!method.name.equals("recipeAfterAdjustments") && !method.name.equals("recalculateDiscount")) continue;
+            if (!method.name.equals("recipeAfterAdjustments") && !method.name.equals("recalculateDiscount")
+                && !method.name.equals("isConvergenceActive")) continue;
             for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions.toArray()) {
                 if (instruction instanceof org.objectweb.asm.tree.FieldInsnNode) {
                     org.objectweb.asm.tree.FieldInsnNode field = (org.objectweb.asm.tree.FieldInsnNode) instruction;

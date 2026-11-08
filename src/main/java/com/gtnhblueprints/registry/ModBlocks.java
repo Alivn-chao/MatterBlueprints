@@ -24,6 +24,7 @@ public final class ModBlocks {
     public static final int CONFIGURATOR_GUI_ID = 1;
     public static final BlockBlueprintConfigurator BLUEPRINT_CONFIGURATOR = new BlockBlueprintConfigurator();
     public static final BlockHostedMachineCasing HOSTED_MACHINE_CASING = new BlockHostedMachineCasing();
+    public static com.gtnhblueprints.wireless.BlockWirelessMEController WIRELESS_ME_CONTROLLER;
     public static int HOSTED_HATCH_CASING_TEXTURE_ID = Casings.ZPMMachineCasing.textureId;
 
     private ModBlocks() {}
@@ -38,6 +39,12 @@ public final class ModBlocks {
     }
 
     public static void init() {
+        WIRELESS_ME_CONTROLLER = new com.gtnhblueprints.wireless.BlockWirelessMEController();
+        GameRegistry.registerBlock(WIRELESS_ME_CONTROLLER, "wireless_me_controller");
+        GameRegistry.registerTileEntity(com.gtnhblueprints.wireless.TileWirelessMEController.class, "matterblueprints:wireless_me_controller");
+        GameRegistry.addShapelessRecipe(new ItemStack(WIRELESS_ME_CONTROLLER),
+            appeng.api.AEApi.instance().definitions().blocks().controller().maybeStack(1).get(), appeng.api.AEApi.instance().definitions().blocks().wirelessConnector().maybeStack(1).get());
+
         registerHostedHatchCasingTexture();
         GameRegistry.addRecipe(
             new ItemStack(BLUEPRINT_CONFIGURATOR),

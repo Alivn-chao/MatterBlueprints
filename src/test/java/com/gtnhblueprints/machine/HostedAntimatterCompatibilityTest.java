@@ -26,7 +26,7 @@ class HostedAntimatterCompatibilityTest {
     private static final String FORGE = "goodgenerator/blocks/tileEntity/AntimatterForge";
 
     @Test
-    void beta3HasExactlyTheTwoEnergyCallsRedirectedByTheMixin() throws Exception {
+    void releaseHasExactlyTheTwoEnergyCallsRedirectedByTheMixin() throws Exception {
         ClassNode source = read(FORGE);
         for (String name : Arrays.asList("onPostTick", "checkProcessing")) {
             MethodNode method = method(source, name);
@@ -83,11 +83,11 @@ class HostedAntimatterCompatibilityTest {
     void nativeContainmentKeepsItsBaseCostAndRollingHistory() throws Exception {
         Object pricing = pricingHarness();
         assertEquals(10_000_000L, price(pricing, "calculateEnergyContainmentCost", 0));
-        assertEquals(10_001_000L, price(pricing, "calculateEnergyContainmentCost", 100));
-        assertEquals(10_002_828L, price(pricing, "calculateEnergyContainmentCost", 100));
-        assertEquals(200L, field(pricing, "rollingCost").getLong(pricing));
+        assertEquals(41_622_776L, price(pricing, "calculateEnergyContainmentCost", 100));
+        assertEquals(41_622_776L, price(pricing, "calculateEnergyContainmentCost", 100));
+        assertEquals(100_000L, field(pricing, "rollingCost").getLong(pricing));
         price(pricing, "calculateEnergyContainmentCost", 0);
-        assertEquals(199L, field(pricing, "rollingCost").getLong(pricing));
+        assertEquals(99_000L, field(pricing, "rollingCost").getLong(pricing));
         // A residual history below 100 is reset, as in native GT.
         field(pricing, "rollingCost").setLong(pricing, 50L);
         assertEquals(10_000_000L, price(pricing, "calculateEnergyContainmentCost", 0));
@@ -140,7 +140,7 @@ class HostedAntimatterCompatibilityTest {
     }
 
     @Test
-    void beta3LocalSlotAndUpgradeCeilCallsMatchBatchInjection() throws Exception {
+    void releaseLocalSlotAndUpgradeCeilCallsMatchBatchInjection() throws Exception {
         ClassNode source = read(FORGE);
         int ceilCalls = 0;
         for (AbstractInsnNode instruction : method(source, "checkProcessing").instructions.toArray()) {

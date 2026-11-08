@@ -16,8 +16,14 @@ public final class BlueprintConfig {
     public static int quantizedMEInputHatchId = 32602;
     public static int meInputAssemblyId = 32603;
     public static int meOutputAssemblyId = 32604;
+    public static int wirelessPatternInputId = 32605;
+    public static int wirelessOutputBusId = 32606;
+    public static int wirelessOutputHatchId = 32607;
+    public static int wirelessOutputAssemblyId = 32608;
+    public static int wirelessInputAssemblyId = 32609;
     public static int hostedMachineScanIntervalTicks = 100;
     public static int hostedMachineRecipeCheckIntervalTicks = 5;
+    public static boolean hostedMachineEffects = true;
 
     private BlueprintConfig() {}
 
@@ -57,6 +63,11 @@ public final class BlueprintConfig {
         quantizedMEInputHatchId = config.getInt("quantizedMEInputHatchId", "machines", quantizedMEInputHatchId, 1, 32766, "MetaTileEntity ID for the quantified ME fluid input hatch.");
         meInputAssemblyId = config.getInt("meInputAssemblyId", "machines", meInputAssemblyId, 1, 32766, "MetaTileEntity ID for the manually marked combined ME input assembly.");
         meOutputAssemblyId = config.getInt("meOutputAssemblyId", "machines", meOutputAssemblyId, 1, 32766, "MetaTileEntity ID for the combined ME output assembly.");
+        wirelessPatternInputId = config.getInt("wirelessPatternInputId", "machines", wirelessPatternInputId, 1, 32766, "Wireless ME pattern input assembly ID.");
+        wirelessOutputBusId = config.getInt("wirelessOutputBusId", "machines", wirelessOutputBusId, 1, 32766, "Wireless ME item output bus ID.");
+        wirelessOutputHatchId = config.getInt("wirelessOutputHatchId", "machines", wirelessOutputHatchId, 1, 32766, "Wireless ME fluid output hatch ID.");
+        wirelessOutputAssemblyId = config.getInt("wirelessOutputAssemblyId", "machines", wirelessOutputAssemblyId, 1, 32766, "Wireless ME combined output assembly ID.");
+        wirelessInputAssemblyId = config.getInt("wirelessInputAssemblyId", "machines", wirelessInputAssemblyId, 1, 32766, "Wireless ME combined input assembly ID.");
         hostedMachineScanIntervalTicks = config.getInt(
             "hostedMachineScanIntervalTicks",
             "machines",
@@ -72,6 +83,8 @@ public final class BlueprintConfig {
             100,
             "Ticks between round-robin recipe checks. One idle remote is checked each interval; increase this value to reduce idle TPS cost.");
         HostedMilestoneConfig.load(config);
+        hostedMachineEffects = config.getBoolean("hostedMachineEffects", "machines", true,
+            "Default for host visual effects. Screwdriver-right-click each host to toggle; existing saved choices are preserved.");
         if (config.hasChanged()) config.save();
     }
 }

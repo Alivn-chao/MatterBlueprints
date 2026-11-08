@@ -60,7 +60,7 @@ public final class BlueprintBuildService {
         state.config.coordAOffset = null;
         state.config.coordBOffset = null;
         state.config.coordCOffset = null;
-        state.config.replaceInterfacesWithP2P = false;
+        state.config.interfaceCopyMode = MMState.InterfaceCopyMode.COPY;
 
         PendingBuild build = new PendingBuild(player, state, manipulator.tier, blocks);
         Task task = new Task(player, stack, build, manipulator.tier.placeTicks);
@@ -123,7 +123,7 @@ public final class BlueprintBuildService {
         try {
             return (Collection<PendingBlock>) PENDING_BLOCKS.get(build);
         } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("无法读取 Matter Manipulator 0.1.55 的搭建队列", exception);
+            throw new IllegalStateException("无法读取 Matter Manipulator 0.1.75 的搭建队列", exception);
         }
     }
 

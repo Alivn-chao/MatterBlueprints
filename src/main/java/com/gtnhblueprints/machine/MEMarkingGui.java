@@ -72,6 +72,14 @@ final class MEMarkingGui {
                         return super.onMousePressed(button);
                     }
                     @Override public boolean onMouseScroll(UpOrDown direction, int count) { return false; }
+                    @Override
+                    @cpw.mods.fml.relauncher.SideOnly(cpw.mods.fml.relauncher.Side.CLIENT)
+                    public void drawOverlay(com.cleanroommc.modularui.screen.viewport.ModularGuiContext context,
+                        com.cleanroommc.modularui.theme.WidgetThemeEntry<?> theme) {
+                        super.drawOverlay(context, theme);
+                        if (port.viewSlots()[index] != null) drawAmount(amount.getIntValue());
+                    }
+
                 }.slot(new ModularSlot(marks, index).singletonSlotGroup())
                     .tooltipAutoUpdate(true).tooltipDynamic(tooltip -> {
                         tooltip.addLine(IKey.lang("matterblueprints.stock.middle_click"));
@@ -104,11 +112,20 @@ final class MEMarkingGui {
                 IPanelHandler editor = amountEditor("fluidAmountEditor" + index, panel, sync,
                     () -> port.getMarkedAmount(index), value -> port.setMarkedAmount(index, value));
                 line.child(new FluidSlot() {
+                    @Override protected boolean displayAmountText() { return false; }
                     @Override public Result onMousePressed(int button) {
                         if (button == 2) { editor.openPanel(); return Result.SUCCESS; }
                         return super.onMousePressed(button);
                     }
                     @Override public boolean onMouseScroll(UpOrDown direction, int count) { return false; }
+                    @Override
+                    @cpw.mods.fml.relauncher.SideOnly(cpw.mods.fml.relauncher.Side.CLIENT)
+                    public void drawOverlay(com.cleanroommc.modularui.screen.viewport.ModularGuiContext context,
+                        com.cleanroommc.modularui.theme.WidgetThemeEntry<?> theme) {
+                        super.drawOverlay(context, theme);
+                        if (port.viewSlots()[index] != null) drawAmount(amount.getIntValue());
+                    }
+
                 }.syncHandler(new FluidSlotSyncHandler(tank(port, index)).phantom(true).controlsAmount(false))
                     .tooltipAutoUpdate(true).tooltipDynamic(tooltip -> {
                         tooltip.addLine(IKey.lang("matterblueprints.stock.middle_click"));
@@ -120,6 +137,25 @@ final class MEMarkingGui {
             content.child(line);
         }
         return content;
+    }
+
+    static String compactAmount(int value) {
+        if (value < 1000) return Integer.toString(value);
+        double divisor = value >= 1000000000 ? 1000000000d : value >= 1000000 ? 1000000d : 1000d;
+        String suffix = value >= 1000000000 ? "G" : value >= 1000000 ? "M" : "k";
+        return new java.text.DecimalFormat("0.##", java.text.DecimalFormatSymbols.getInstance(java.util.Locale.ROOT))
+            .format(Math.floor(value / divisor * 100) / 100) + suffix;
+    }
+
+    @cpw.mods.fml.relauncher.SideOnly(cpw.mods.fml.relauncher.Side.CLIENT)
+    private static void drawAmount(int amount) {
+        net.minecraft.client.gui.FontRenderer font = net.minecraft.client.Minecraft.getMinecraft().fontRenderer;
+        String text = compactAmount(amount);
+        org.lwjgl.opengl.GL11.glPushMatrix();
+        org.lwjgl.opengl.GL11.glTranslatef(0, 0, 200);
+        org.lwjgl.opengl.GL11.glScalef(0.5f, 0.5f, 1);
+        font.drawStringWithShadow(text, 34 - font.getStringWidth(text), 25, 0xFFFFFF);
+        org.lwjgl.opengl.GL11.glPopMatrix();
     }
 
     private static IFluidTank tank(MTEQuantizedMEInputHatch port, int index) {

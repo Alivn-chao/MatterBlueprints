@@ -176,4 +176,35 @@ class HostedNaquadahCycleTest {
         assertEquals(1, progression.getWorkUnits());
         assertEquals(1, progression.getProductiveTicks());
     }
+
+    @Test
+    void cachedRateMatchesOriginalDivisionAtEveryTickIncludingReloadsAndPartialCredits() {
+        java.util.Random random = new java.util.Random(19730825L);
+        for (int scenario = 0; scenario < 32; scenario++) {
+            HostedNaquadahCycle cycle = new HostedNaquadahCycle(1, 1, 1);
+            cycle.energy = new BigInteger(160, random).add(BigInteger.ONE);
+            cycle.configure(true);
+            for (int tick = 0; tick < 1200; tick++) {
+                BigInteger expected = cycle.energy.divide(BigInteger.valueOf(Math.max(1, cycle.wirelessTicks)));
+                BigInteger output = cycle.nextOutput(0);
+                assertEquals(expected, output, "Scenario " + scenario + " tick " + tick);
+                assertSame(output, cycle.nextOutput(0), "A blocked/repeated request should reuse its calculated amount");
+                // Exercise the documented partial-credit fallback as well as normal full credits.
+                cycle.accept(tick == 40 ? output.divide(BigInteger.valueOf(2)) : output);
+                if (tick == 500) cycle = HostedNaquadahCycle.read(cycle.write());
+            }
+            assertTrue(cycle.finished());
+        }
+    }
+
+    @Test
+    void zeroRemainingTicksWithUnspentEnergyNeverAddsOneEu() {
+        HostedNaquadahCycle cycle = new HostedNaquadahCycle(1, 1, 1);
+        cycle.energy = BigInteger.valueOf(713);
+        cycle.configure(true);
+        cycle.wirelessTicks = 0;
+        assertEquals(BigInteger.valueOf(713), cycle.nextOutput(0));
+        cycle.accept(cycle.nextOutput(0));
+        assertTrue(cycle.finished());
+    }
 }

@@ -8,10 +8,17 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 
 /** Stages native thermal growth while the disabled remote is owned by the host. */
 final class HostedThermalMachineSupport {
+    private static final ClassValue<Integer> KINDS = new ClassValue<Integer>() {
+        @Override protected Integer computeValue(Class<?> type) { return classify(type); }
+    };
     private HostedThermalMachineSupport() {}
 
     static int kind(MTEMultiBlockBase machine) {
-        for (Class<?> type = machine.getClass(); type != null; type = type.getSuperclass()) {
+        return KINDS.get(machine.getClass());
+    }
+
+    private static int classify(Class<?> machineClass) {
+        for (Class<?> type = machineClass; type != null; type = type.getSuperclass()) {
             String name = type.getName();
             if (name.equals("gregtech.common.tileentities.machines.multi.MTEExothermicHearth")) return 1;
             if (name.equals("gregtech.common.tileentities.machines.multi.MTEEndothermicFridge")) return 2;
@@ -77,14 +84,7 @@ final class HostedThermalMachineSupport {
     }
 
     private static Field field(Object object, String name) {
-        for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
-            try {
-                Field field = type.getDeclaredField(name);
-                field.setAccessible(true);
-                return field;
-            } catch (NoSuchFieldException ignored) {}
-        }
-        throw new IllegalStateException("Unsupported thermal machine field: " + name);
+        return HostedFieldCache.get(object.getClass(), name);
     }
 
     static final class Scope implements AutoCloseable {

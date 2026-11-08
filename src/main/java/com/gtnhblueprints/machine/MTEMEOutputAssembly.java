@@ -20,7 +20,7 @@ public class MTEMEOutputAssembly extends MTEHatchOutputBusME {
     private boolean dropPrepared;
     final MEAssemblyFluidPort fluids = new MEAssemblyFluidPort(this);
     public MTEMEOutputAssembly(int id, String name, String regional) { super(id, name, regional); }
-    private MTEMEOutputAssembly(String name, int tier, String[] description, ITexture[][][] textures) {
+    protected MTEMEOutputAssembly(String name, int tier, String[] description, ITexture[][][] textures) {
         super(name, tier, description, textures);
     }
     @Override public MetaTileEntity newMetaEntity(IGregTechTileEntity tile) {
