@@ -220,3 +220,7 @@ matterblueprints.host.effects.on=§a被托管机器工作特效：开启
 matterblueprints.host.effects.off=§e被托管机器工作特效：关闭
 matterblueprints.host.tooltip.effects=螺丝刀右键中心：切换远端工作特效；Shift+螺丝刀：配方锁定
 matterblueprints.binder.copy_unavailable=§e方块已粘贴，但无法继承托管绑定：原中心已拆除，或目标机器已绑定其他中心。
+gt.blockmachines.matterblueprints.hatch.long_stock_input_bus.name=奇点存储输入总线（ME）
+gt.blockmachines.matterblueprints.hatch.long_stock_input_hatch.name=奇点存储输入仓（ME）
+gt.blockmachines.matterblueprints.hatch.advanced_long_stock_input_bus.name=进阶奇点存储输入总线（ME）
+gt.blockmachines.matterblueprints.hatch.advanced_long_stock_input_hatch.name=进阶奇点存储输入仓（ME）

@@ -220,3 +220,7 @@ matterblueprints.host.effects.on=§aHosted machine working effects: ON
 matterblueprints.host.effects.off=§eHosted machine working effects: OFF
 matterblueprints.host.tooltip.effects=Screwdriver on host: toggle remote working effects; Shift+screwdriver: recipe lock
 matterblueprints.binder.copy_unavailable=Block pasted, but hosting could not be inherited: the original center was removed or the target belongs to another center.
+gt.blockmachines.matterblueprints.hatch.long_stock_input_bus.name=Long-count Stocking Input Bus (ME)
+gt.blockmachines.matterblueprints.hatch.long_stock_input_hatch.name=Long-count Stocking Input Hatch (ME)
+gt.blockmachines.matterblueprints.hatch.advanced_long_stock_input_bus.name=Advanced Long-count Stocking Input Bus (ME)
+gt.blockmachines.matterblueprints.hatch.advanced_long_stock_input_hatch.name=Advanced Long-count Stocking Input Hatch (ME)

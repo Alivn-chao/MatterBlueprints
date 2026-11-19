@@ -21,6 +21,10 @@ public final class BlueprintConfig {
     public static int wirelessOutputHatchId = 32607;
     public static int wirelessOutputAssemblyId = 32608;
     public static int wirelessInputAssemblyId = 32609;
+    public static int longStockInputBusId = 32610;
+    public static int longStockInputHatchId = 32611;
+    public static int advancedLongStockInputBusId = 32612;
+    public static int advancedLongStockInputHatchId = 32613;
     public static int hostedMachineScanIntervalTicks = 100;
     public static int hostedMachineRecipeCheckIntervalTicks = 5;
     public static boolean hostedMachineEffects = true;
@@ -68,6 +72,14 @@ public final class BlueprintConfig {
         wirelessOutputHatchId = config.getInt("wirelessOutputHatchId", "machines", wirelessOutputHatchId, 1, 32766, "Wireless ME fluid output hatch ID.");
         wirelessOutputAssemblyId = config.getInt("wirelessOutputAssemblyId", "machines", wirelessOutputAssemblyId, 1, 32766, "Wireless ME combined output assembly ID.");
         wirelessInputAssemblyId = config.getInt("wirelessInputAssemblyId", "machines", wirelessInputAssemblyId, 1, 32766, "Wireless ME combined input assembly ID.");
+        longStockInputBusId = config.getInt("longStockInputBusId", "machines", longStockInputBusId,
+            1, 32766, "Long-count ME stocking input bus ID.");
+        longStockInputHatchId = config.getInt("longStockInputHatchId", "machines", longStockInputHatchId,
+            1, 32766, "Long-count ME stocking input hatch ID.");
+        advancedLongStockInputBusId = config.getInt("advancedLongStockInputBusId", "machines",
+            advancedLongStockInputBusId, 1, 32766, "Advanced long-count ME stocking input bus ID.");
+        advancedLongStockInputHatchId = config.getInt("advancedLongStockInputHatchId", "machines",
+            advancedLongStockInputHatchId, 1, 32766, "Advanced long-count ME stocking input hatch ID.");
         hostedMachineScanIntervalTicks = config.getInt(
             "hostedMachineScanIntervalTicks",
             "machines",

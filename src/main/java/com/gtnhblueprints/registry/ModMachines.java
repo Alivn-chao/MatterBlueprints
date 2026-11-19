@@ -1,5 +1,7 @@
 package com.gtnhblueprints.registry;
 
+import net.minecraft.item.ItemStack;
+
 import com.gtnhblueprints.BlueprintConfig;
 import com.gtnhblueprints.MatterBlueprints;
 import com.gtnhblueprints.machine.MTEHostedMachineController;
@@ -7,6 +9,8 @@ import com.gtnhblueprints.machine.MTEQuantizedMEInputBus;
 import com.gtnhblueprints.machine.MTEQuantizedMEInputHatch;
 import com.gtnhblueprints.machine.MTEMEInputAssembly;
 import com.gtnhblueprints.machine.MTEMEOutputAssembly;
+import com.gtnhblueprints.machine.MTELongStockInputBus;
+import com.gtnhblueprints.machine.MTELongStockInputHatch;
 import com.gtnhblueprints.wireless.MTEWirelessPatternInputAssembly;
 
 import appeng.api.AEApi;
@@ -73,6 +77,7 @@ public final class ModMachines {
 
     public static gregtech.api.metatileentity.MetaTileEntity WIRELESS_PATTERN_INPUT, WIRELESS_OUTPUT_BUS, WIRELESS_OUTPUT_HATCH, WIRELESS_OUTPUT_ASSEMBLY, WIRELESS_INPUT_ASSEMBLY;
     public static void init() {
+        registerLongStockInputs();
         WIRELESS_PATTERN_INPUT = new com.gtnhblueprints.wireless.MTEWirelessPatternInputAssembly(requireFreeId(BlueprintConfig.wirelessPatternInputId), "matterblueprints.hatch.wireless_pattern_input", "Wireless ME Pattern Input Assembly");
         AEApi.instance().registries().interfaceTerminal().register(MTEWirelessPatternInputAssembly.class);
         WIRELESS_OUTPUT_BUS = new com.gtnhblueprints.wireless.MTEWirelessOutputBus(requireFreeId(BlueprintConfig.wirelessOutputBusId), "matterblueprints.hatch.wireless_output_bus", "Wireless ME Output Bus");
@@ -111,5 +116,31 @@ public final class ModMachines {
                 ItemList.Field_Generator_ZPM.get(1),
                 'C',
                 OrePrefixes.circuit.get(Materials.LuV) });
+    }
+
+    private static void registerLongStockInputs() {
+        ItemStack component = AEApi.instance().definitions().items().cellSingularity().maybeStack(1).get();
+        registerLongStockBus(BlueprintConfig.longStockInputBusId, false, ItemList.Hatch_Input_Bus_ME, component);
+        registerLongStockHatch(BlueprintConfig.longStockInputHatchId, false, ItemList.Hatch_Input_ME, component);
+        registerLongStockBus(BlueprintConfig.advancedLongStockInputBusId, true, ItemList.Hatch_Input_Bus_ME_Advanced,
+            component);
+        registerLongStockHatch(BlueprintConfig.advancedLongStockInputHatchId, true, ItemList.Hatch_Input_ME_Advanced,
+            component);
+    }
+
+    private static void registerLongStockBus(int id, boolean advanced, ItemList base, ItemStack component) {
+        String prefix = advanced ? "advanced_" : "";
+        MTELongStockInputBus bus = new MTELongStockInputBus(requireFreeId(id), advanced,
+            "matterblueprints.hatch." + prefix + "long_stock_input_bus",
+            advanced ? "Advanced Long-count Stocking Input Bus (ME)" : "Long-count Stocking Input Bus (ME)");
+        GTModHandler.addShapelessCraftingRecipe(bus.getStackForm(1), new Object[] { base.get(1), component.copy() });
+    }
+
+    private static void registerLongStockHatch(int id, boolean advanced, ItemList base, ItemStack component) {
+        String prefix = advanced ? "advanced_" : "";
+        MTELongStockInputHatch hatch = new MTELongStockInputHatch(requireFreeId(id), advanced,
+            "matterblueprints.hatch." + prefix + "long_stock_input_hatch",
+            advanced ? "Advanced Long-count Stocking Input Hatch (ME)" : "Long-count Stocking Input Hatch (ME)");
+        GTModHandler.addShapelessCraftingRecipe(hatch.getStackForm(1), new Object[] { base.get(1), component.copy() });
     }
 }
