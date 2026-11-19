@@ -18,10 +18,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import com.gtnhblueprints.io.BlueprintJson;
 import com.gtnhblueprints.loading.HostedLateMixinLoader;
 import com.gtnhblueprints.mixin.MixinMMHostedBinding;
+import com.gtnhblueprints.mixin.MixinMMWirelessOutputBinding;
+import com.gtnhblueprints.wireless.WirelessOutputCopy;
 import com.recursive_pineapple.matter_manipulator.common.building.GTAnalysisResult;
 
 class HostedBindingCompatibilityTest {
     static class TraitHarness extends MixinMMHostedBinding {}
+    static class WirelessTraitHarness extends MixinMMWirelessOutputBinding {}
+    static class WirelessResultHarness extends GTAnalysisResult implements WirelessOutputCopy.Trait {
+        private String channel;
+        @Override public String matterblueprints$getWirelessOutputChannel() { return channel; }
+        @Override public void matterblueprints$setWirelessOutputChannel(String channel) { this.channel = channel; }
+    }
     static class ResultHarness extends GTAnalysisResult implements HostedBindingSupport.Trait {
         private String host;
         @Override public String matterblueprints$getHost() { return host; }
@@ -42,6 +50,25 @@ class HostedBindingCompatibilityTest {
         assertTrue(json.contains("matterblueprints$hostId"));
         assertEquals("center-id", BlueprintJson.GSON.fromJson(json, TraitHarness.class).matterblueprints$getHost());
         assertNull(BlueprintJson.GSON.fromJson("{}", TraitHarness.class).matterblueprints$getHost());
+    }
+
+    @Test
+    void wirelessChannelSurvivesBlueprintSerializationAndNativeClone() throws Exception {
+        WirelessTraitHarness source = new WirelessTraitHarness();
+        source.matterblueprints$setWirelessOutputChannel("test-channel");
+        String json = BlueprintJson.GSON.toJson(source);
+        WirelessTraitHarness restored = BlueprintJson.GSON.fromJson(json, WirelessTraitHarness.class);
+        WirelessResultHarness cloned = new WirelessResultHarness();
+        Method cloneHook = MixinMMWirelessOutputBinding.class
+            .getDeclaredMethod("matterblueprints$cloneWirelessOutput", CallbackInfoReturnable.class);
+        cloneHook.setAccessible(true);
+        cloneHook.invoke(restored, new CallbackInfoReturnable<GTAnalysisResult>("clone", false, cloned));
+        assertEquals("test-channel", cloned.matterblueprints$getWirelessOutputChannel());
+        assertNull(BlueprintJson.GSON.fromJson("{}", WirelessTraitHarness.class)
+            .matterblueprints$getWirelessOutputChannel());
+        assertTrue(new HostedLateMixinLoader()
+            .getMixins(new HashSet<>(Arrays.asList("gregtech", "matter-manipulator", "appliedenergistics2")))
+            .contains("MixinMMWirelessOutputBinding"));
     }
 
     @Test

@@ -7,7 +7,9 @@ import com.gtnhblueprints.machine.MTEQuantizedMEInputBus;
 import com.gtnhblueprints.machine.MTEQuantizedMEInputHatch;
 import com.gtnhblueprints.machine.MTEMEInputAssembly;
 import com.gtnhblueprints.machine.MTEMEOutputAssembly;
+import com.gtnhblueprints.wireless.MTEWirelessPatternInputAssembly;
 
+import appeng.api.AEApi;
 import gregtech.api.GregTechAPI;
 import gregtech.api.enums.ItemList;
 import gregtech.api.enums.Materials;
@@ -72,6 +74,7 @@ public final class ModMachines {
     public static gregtech.api.metatileentity.MetaTileEntity WIRELESS_PATTERN_INPUT, WIRELESS_OUTPUT_BUS, WIRELESS_OUTPUT_HATCH, WIRELESS_OUTPUT_ASSEMBLY, WIRELESS_INPUT_ASSEMBLY;
     public static void init() {
         WIRELESS_PATTERN_INPUT = new com.gtnhblueprints.wireless.MTEWirelessPatternInputAssembly(requireFreeId(BlueprintConfig.wirelessPatternInputId), "matterblueprints.hatch.wireless_pattern_input", "Wireless ME Pattern Input Assembly");
+        AEApi.instance().registries().interfaceTerminal().register(MTEWirelessPatternInputAssembly.class);
         WIRELESS_OUTPUT_BUS = new com.gtnhblueprints.wireless.MTEWirelessOutputBus(requireFreeId(BlueprintConfig.wirelessOutputBusId), "matterblueprints.hatch.wireless_output_bus", "Wireless ME Output Bus");
         WIRELESS_OUTPUT_HATCH = new com.gtnhblueprints.wireless.MTEWirelessOutputHatch(requireFreeId(BlueprintConfig.wirelessOutputHatchId), "matterblueprints.hatch.wireless_output_hatch", "Wireless ME Output Hatch");
         WIRELESS_OUTPUT_ASSEMBLY = new com.gtnhblueprints.wireless.MTEWirelessOutputAssembly(requireFreeId(BlueprintConfig.wirelessOutputAssemblyId), "matterblueprints.hatch.wireless_output_assembly", "Wireless ME Output Assembly");

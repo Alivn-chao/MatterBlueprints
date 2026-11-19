@@ -22,6 +22,7 @@ public final class HostedLateMixinLoader implements ILateMixinLoader {
         if (loadedMods.contains("gregtech") && loadedMods.contains("matter-manipulator")) {
             mixins.add("MixinMMHostedBinding");
             mixins.add("MixinMMHostedMove");
+            if (loadedMods.contains("appliedenergistics2")) mixins.add("MixinMMWirelessOutputBinding");
         }
         if (loadedMods.contains("appliedenergistics2")) {
             mixins.add("MixinAEWirelessControllerClass");
