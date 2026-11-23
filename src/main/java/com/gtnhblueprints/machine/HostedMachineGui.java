@@ -30,7 +30,9 @@ final class HostedMachineGui extends MTEMultiBlockBaseGui<MTEHostedMachineContro
 
             @Override
             public boolean isItemValid(ItemStack stack) {
-                return multiblock.isItemValidForSlot(MTEHostedMachineController.WIRELESS_UPGRADE_SLOT, stack);
+                EntityPlayer player = syncManager.getPlayer();
+                return (player.worldObj.isRemote || multiblock.canConfigureWireless(player))
+                    && multiblock.isItemValidForSlot(MTEHostedMachineController.WIRELESS_UPGRADE_SLOT, stack);
             }
 
             @Override
@@ -53,7 +55,10 @@ final class HostedMachineGui extends MTEMultiBlockBaseGui<MTEHostedMachineContro
         }.singletonSlotGroup();
         return super.createRightPanelGapRow(panel, syncManager)
             .child(new ItemSlot().slot(upgrade)
-                .tooltipBuilder(t -> t.addLine(IKey.lang("matterblueprints.wireless.upgrade_slot"))))
+                .tooltipBuilder(t -> {
+                    t.addLine(IKey.lang("matterblueprints.wireless.upgrade_slot"));
+                    t.addLine(IKey.lang("matterblueprints.host.final.upgrade"));
+                }))
             .child(new ToggleButton().value(wireless).size(36, 18)
                 .overlay(IKey.lang("matterblueprints.wireless.button"))
                 .tooltipBuilder(t -> {

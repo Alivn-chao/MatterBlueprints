@@ -79,6 +79,26 @@ public final class MTELongStockInputHatch extends MTEHatchInputME {
         if (processingRecipe) stock.appendExtra(inputs, GTUtility::copyAmount);
     }
 
+    long getDisplayAmount(int index) {
+        Slot slot = slots[index];
+        if (slot == null || getBaseMetaTileEntity() == null || !getBaseMetaTileEntity().isServerSide()
+            || !isAllowedToWork()) return 0L;
+        IAEFluidStack key = AEFluidStack.create(slot.config);
+        if (key == null) return 0L;
+        try {
+            IAEFluidStack available = LongStockInput.available(getProxy().getStorage().getFluidInventory(), key,
+                getRequestSource());
+            return available == null ? 0L : available.getStackSize();
+        } catch (GridAccessException unavailable) {
+            return 0L;
+        }
+    }
+
+    FluidStack getDisplayFluid(int index) {
+        Slot slot = slots[index];
+        return slot == null ? null : slot.getOriginalExtracted();
+    }
+
     private BaseActionSource getRequestSource() {
         if (requestSource == null) requestSource = new MachineSource((IActionHost) getBaseMetaTileEntity());
         return requestSource;

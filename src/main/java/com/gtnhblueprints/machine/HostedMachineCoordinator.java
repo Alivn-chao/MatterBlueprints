@@ -136,6 +136,7 @@ final class HostedMachineCoordinator {
 
     void refresh() {
         synchronizeBindings();
+        if (owner.hasFinalFormUpgrade()) return;
         // A periodic rebuild is cheap and picks up a remote structure replacing one of its hatch-list instances.
         runningContext = null;
         ItemStack selector = owner.getControllerSlot();
@@ -183,6 +184,14 @@ final class HostedMachineCoordinator {
             }
         }
         statusKey = hosted.isEmpty() ? "matterblueprints.host.status.no_match" : "matterblueprints.host.status.hosting";
+    }
+
+    int getFinalFormPowerPercent() {
+        return progression.powerPercent();
+    }
+
+    void recordFinalFormWork(GTRecipe recipe, int parallels) {
+        progression.recordInstantRecipes(recipe.mDuration, recipe.mEUt, parallels);
     }
 
     void tick(long worldTick, boolean allowNewRecipe) {
@@ -766,6 +775,10 @@ final class HostedMachineCoordinator {
         result.add(HostedHudLine.text("matterblueprints.host.hud.energy",
                 HostedNumberFormatter.format(progression.getEnergyThroughput()),
                 formatEnergyTarget(progression.getNextEnergyTarget())));
+        if (owner.hasFinalFormUpgrade()) {
+            result.add(HostedHudLine.text("matterblueprints.host.final.energy_discount", progression.getPowerMultiplier()));
+            return result;
+        }
         result.add(
             HostedHudLine.text(
                 "matterblueprints.host.hud.effects",

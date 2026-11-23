@@ -73,6 +73,19 @@ public final class MTELongStockInputBus extends MTEHatchInputBusME {
         if (processingRecipe) stock.appendExtra(inputs, MTELongStockInputBus::recipeStack);
     }
 
+    long getDisplayAmount(int index) {
+        Slot slot = slots[index];
+        if (slot == null || getBaseMetaTileEntity() == null || !getBaseMetaTileEntity().isServerSide()
+            || !isAllowedToWork()) return 0L;
+        try {
+            IAEItemStack available = LongStockInput.available(getProxy().getStorage().getItemInventory(),
+                slot.createAEStack(1), getRequestSource());
+            return available == null ? 0L : available.getStackSize();
+        } catch (GridAccessException unavailable) {
+            return 0L;
+        }
+    }
+
     static ItemStack recipeStack(int count, ItemStack template) {
         ItemStack stack = template.copy();
         stack.stackSize = count;

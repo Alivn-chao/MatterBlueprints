@@ -19,6 +19,7 @@ import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_BOARD_PROCESS
 import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_BOARD_PROCESSOR_GLOW;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,12 +63,14 @@ import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.render.TextureFactory;
 import gregtech.api.structure.error.StructureError;
 import gregtech.api.util.MultiblockTooltipBuilder;
+import gregtech.api.util.GTRecipe;
 import gregtech.common.misc.WirelessNetworkManager;
 import gregtech.common.misc.spaceprojects.SpaceProjectManager;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
 import gtPlusPlus.xmod.gregtech.api.metatileentity.implementations.nbthandlers.MTEHatchCatalysts;
 import mcp.mobius.waila.api.IWailaConfigHandler;
 import mcp.mobius.waila.api.IWailaDataAccessor;
+import tectech.thing.CustomItemList;
 
 public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHostedMachineController>
     implements ISurvivalConstructable, ICasingTextureProvider {
@@ -81,6 +84,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     private static IStructureDefinition<MTEHostedMachineController> structureDefinition;
 
     private final HostedMachineCoordinator coordinator = new HostedMachineCoordinator(this);
+    private final HostedFinalForm finalForm = new HostedFinalForm(this);
     private final ArrayList<MTEHatchCatalysts> catalystHatches = new ArrayList<MTEHatchCatalysts>();
     private final ArrayList<gregtech.api.metatileentity.implementations.MTEHatchDataAccess> dataHatches = new ArrayList<>();
     private final List<goodgenerator.blocks.tileEntity.AntimatterOutputHatch> antimatterHatches = new ArrayList<>();
@@ -90,6 +94,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     // GT multiblocks reserve slot 0 but do not use it; slot 1 remains the machine selector.
     public static final int WIRELESS_UPGRADE_SLOT = 0;
     private boolean wirelessMode;
+    private boolean finalFormActive;
     private boolean hostedEffects = BlueprintConfig.hostedMachineEffects;
     private final WirelessEnergyBuffer wirelessBuffer = new WirelessEnergyBuffer();
     private static final WirelessEnergyBuffer.Ledger WIRELESS_LEDGER = WirelessNetworkManager::addEUToGlobalEnergyMap;
@@ -180,7 +185,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
 
     public boolean hasWirelessUpgrade() {
         ItemStack stack = mInventory[WIRELESS_UPGRADE_SLOT];
-        return isWirelessUpgrade(stack);
+        return isFinalFormUpgrade(stack) || isWirelessUpgrade(stack);
     }
 
     private static boolean isWirelessUpgrade(ItemStack stack) {
@@ -191,7 +196,16 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     }
 
     public boolean isWirelessMode() {
-        return wirelessMode && hasWirelessUpgrade();
+        return hasFinalFormUpgrade() || wirelessMode && hasWirelessUpgrade();
+    }
+
+    public boolean hasFinalFormUpgrade() {
+        return isFinalFormUpgrade(mInventory[WIRELESS_UPGRADE_SLOT]);
+    }
+
+    private static boolean isFinalFormUpgrade(ItemStack stack) {
+        return stack != null && stack.stackSize > 0 && stack.getItem() instanceof tectech.thing.item.ItemAstralArrayFabricator
+            && CustomItemList.astralArrayFabricator.isStackEqual(stack);
     }
 
     public boolean canConfigureWireless(EntityPlayer player) {
@@ -200,7 +214,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     }
 
     public void setWirelessMode(boolean enabled, EntityPlayer player) {
-        if (getBaseMetaTileEntity() == null) return;
+        if (getBaseMetaTileEntity() == null || hasFinalFormUpgrade()) return;
         if (getBaseMetaTileEntity().isServerSide()) {
             if (!canConfigureWireless(player) || (enabled && !hasWirelessUpgrade())) return;
             if (!enabled && !refundWirelessEnergy()) return;
@@ -221,7 +235,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     public boolean isItemValidForSlot(int index, ItemStack stack) {
         return index == WIRELESS_UPGRADE_SLOT
-            ? isWirelessUpgrade(stack)
+            ? isWirelessUpgrade(stack) || isFinalFormUpgrade(stack) && canRemoveWirelessUpgrade()
             : super.isItemValidForSlot(index, stack);
     }
 
@@ -236,14 +250,26 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     }
 
     boolean consumeWirelessEnergy(long amount, int remainingTicks) {
-        IGregTechTileEntity tile = getBaseMetaTileEntity();
-        if (tile == null || !tile.isServerSide() || !isWirelessMode()) return false;
-        UUID player = tile.getOwnerUuid();
-        if (player == null || player.equals(EMPTY_UUID)) return false;
-        UUID account = SpaceProjectManager.getLeader(player);
+        UUID account = getWirelessAccount();
+        if (account == null) return false;
         boolean result = wirelessBuffer.consume(account, amount, remainingTicks, WIRELESS_LEDGER);
         markDirty();
         return result;
+    }
+
+    UUID getWirelessAccount() {
+        IGregTechTileEntity tile = getBaseMetaTileEntity();
+        if (tile == null || !tile.isServerSide() || !isWirelessMode()) return null;
+        UUID player = tile.getOwnerUuid();
+        return player == null || player.equals(EMPTY_UUID) ? null : SpaceProjectManager.getLeader(player);
+    }
+
+    int getFinalFormPowerPercent() {
+        return coordinator.getFinalFormPowerPercent();
+    }
+
+    void recordFinalFormWork(GTRecipe recipe, int parallels) {
+        coordinator.recordFinalFormWork(recipe, parallels);
     }
 
     boolean canGenerateWirelessly() {
@@ -355,18 +381,21 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     public ItemStack getMachineCraftingIcon() {
         ItemStack selector = getControllerSlot();
-        if (selector != null) {
-            int id = selector.getItemDamage();
-            if (id >= 0 && id < gregtech.api.GregTechAPI.METATILEENTITIES.length) {
-                IMetaTileEntity machine = gregtech.api.GregTechAPI.METATILEENTITIES[id];
-                if (machine instanceof MTEMultiBlockBase && selector.isItemEqual(machine.getStackForm(1L))) {
-                    ItemStack icon = selector.copy();
-                    icon.stackSize = 1;
-                    return icon;
-                }
-            }
+        if (selectedMachine(selector) != null) {
+            ItemStack icon = selector.copy();
+            icon.stackSize = 1;
+            return icon;
         }
         return super.getMachineCraftingIcon();
+    }
+
+    private static MTEMultiBlockBase selectedMachine(ItemStack selector) {
+        if (selector == null || selector.stackSize <= 0) return null;
+        int id = selector.getItemDamage();
+        if (id < 0 || id >= gregtech.api.GregTechAPI.METATILEENTITIES.length) return null;
+        IMetaTileEntity machine = gregtech.api.GregTechAPI.METATILEENTITIES[id];
+        return machine instanceof MTEMultiBlockBase && selector.isItemEqual(machine.getStackForm(1L))
+            ? (MTEMultiBlockBase) machine : null;
     }
 
     private void refreshPatternTerminalIcons() {
@@ -402,7 +431,24 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             return;
         }
         if (tick % 20L == 0L) refreshPatternTerminalIcons();
-        if (tick % BlueprintConfig.hostedMachineScanIntervalTicks == 0) coordinator.refresh();
+        boolean useFinalForm = hasFinalFormUpgrade();
+        boolean changedMode = useFinalForm != finalFormActive;
+        if (changedMode) {
+            finalFormActive = useFinalForm;
+            finalForm.reset();
+            if (useFinalForm) {
+                coordinator.releaseAll();
+                synchronizeHostedDisplayState();
+            }
+        }
+        if (useFinalForm) {
+            // The normal hosting loop and its remote machine scans are inactive in this mode.
+            boolean enabled = tileEntity.isAllowedToWork() && refundWirelessEnergy();
+            boolean worked = finalForm.tick(tick, enabled, selectedMachine(getControllerSlot()));
+            tileEntity.setActive(worked);
+            return;
+        }
+        if (changedMode || tick % BlueprintConfig.hostedMachineScanIntervalTicks == 0) coordinator.refresh();
         coordinator.tick(tick, tileEntity.isAllowedToWork());
         int running = coordinator.getRunningCount();
         if (running == 0 || coordinator.isGeneratorMode()) refundWirelessEnergy();
@@ -614,6 +660,20 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
     @Override
     public String[] getInfoData() {
         String[] parent = super.getInfoData();
+        if (hasFinalFormUpgrade()) {
+            List<String> lines = new ArrayList<>(Arrays.asList(parent));
+            ItemStack selector = getControllerSlot();
+            lines.add(StatCollector.translateToLocal("matterblueprints.host.final.mode"));
+            lines.add(StatCollector.translateToLocalFormatted("matterblueprints.host.waila.selector",
+                selector == null ? StatCollector.translateToLocal("matterblueprints.host.none") : selector.getDisplayName()));
+            lines.add(StatCollector.translateToLocal(finalForm.status()));
+            if (finalForm.completed() > 0) {
+                lines.add(StatCollector.translateToLocalFormatted("matterblueprints.host.final.last_batch",
+                    HostedNumberFormatter.format(finalForm.completed()), HostedNumberFormatter.format(finalForm.spent())));
+            }
+            lines.addAll(coordinator.getProgressionStatusLines());
+            return lines.toArray(new String[0]);
+        }
         List<String> machineLines = coordinator.getMachineStatusLines(6);
         List<String> progressionLines = coordinator.getProgressionStatusLines();
         String[] result = Arrays.copyOf(parent, parent.length + 6 + machineLines.size() + progressionLines.size());
@@ -655,6 +715,16 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         int z
     ) {
         super.getWailaNBTData(player, tile, tag, world, x, y, z);
+        if (hasFinalFormUpgrade()) {
+            tag.setBoolean("mbHostFinalForm", true);
+            tag.setString("mbHostStatus", finalForm.status());
+            tag.setLong("mbHostFinalCompleted", finalForm.completed());
+            tag.setString("mbHostFinalSpent", finalForm.spent().toString());
+            ItemStack selector = getControllerSlot();
+            if (selector != null) tag.setTag("mbHostSelectorItem", selector.writeToNBT(new NBTTagCompound()));
+            tag.setTag("mbHostProgressionLines", HostedHudLine.write(coordinator.getProgressionHudLines()));
+            return;
+        }
         tag.setInteger("mbHostCount", coordinator.getHostedCount());
         tag.setInteger("mbHostRunning", coordinator.getRunningCount());
         tag.setInteger("mbHostProgress", coordinator.getAggregateProgressPercent());
@@ -686,6 +756,19 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         int count = tag.getInteger("mbHostCount");
         ItemStack selectorItem = ItemStack.loadItemStackFromNBT(tag.getCompoundTag("mbHostSelectorItem"));
         String selector = selectorItem == null ? "" : selectorItem.getDisplayName();
+        if (tag.getBoolean("mbHostFinalForm")) {
+            tooltip.add(EnumChatFormatting.LIGHT_PURPLE + StatCollector.translateToLocal("matterblueprints.host.final.mode"));
+            tooltip.add(StatCollector.translateToLocalFormatted("matterblueprints.host.waila.selector",
+                selector.isEmpty() ? StatCollector.translateToLocal("matterblueprints.host.none") : selector));
+            tooltip.add(EnumChatFormatting.YELLOW + StatCollector.translateToLocal(tag.getString("mbHostStatus")));
+            if (tag.getLong("mbHostFinalCompleted") > 0) {
+                tooltip.add(StatCollector.translateToLocalFormatted("matterblueprints.host.final.last_batch",
+                    HostedNumberFormatter.format(tag.getLong("mbHostFinalCompleted")),
+                    HostedNumberFormatter.format(new BigInteger(tag.getString("mbHostFinalSpent")))));
+            }
+            appendProgressionTooltip(tooltip, tag);
+            return;
+        }
         tooltip.add(
             EnumChatFormatting.AQUA + StatCollector.translateToLocalFormatted("matterblueprints.host.waila.count", count));
         int progressTicks = tag.getInteger("mbHostProgressTicks");
@@ -746,14 +829,18 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
         for (int i = 0; i < machineLines.tagCount(); i++) {
             tooltip.add(EnumChatFormatting.GRAY + HostedHudLine.read(machineLines.getCompoundTagAt(i)).render());
         }
-        NBTTagList progressionLines = tag.getTagList("mbHostProgressionLines", 10);
-        for (int i = 0; i < progressionLines.tagCount(); i++) {
-            tooltip.add(EnumChatFormatting.LIGHT_PURPLE + HostedHudLine.read(progressionLines.getCompoundTagAt(i)).render());
-        }
+        appendProgressionTooltip(tooltip, tag);
         // GT adds aggregate output quantities before our own lines. Compact the complete tooltip so inherited
         // production amounts use the same notation as host power and progression statistics.
         for (int i = 0; i < tooltip.size(); i++) {
             tooltip.set(i, HostedNumberFormatter.compactLargeIntegers(tooltip.get(i)));
+        }
+    }
+
+    private static void appendProgressionTooltip(List<String> tooltip, NBTTagCompound tag) {
+        NBTTagList lines = tag.getTagList("mbHostProgressionLines", 10);
+        for (int i = 0; i < lines.tagCount(); i++) {
+            tooltip.add(EnumChatFormatting.LIGHT_PURPLE + HostedHudLine.read(lines.getCompoundTagAt(i)).render());
         }
     }
 
@@ -767,6 +854,7 @@ public class MTEHostedMachineController extends MTEEnhancedMultiBlockBase<MTEHos
             .addInfo(tr("matterblueprints.host.tooltip.summary"))
             .addInfo(tr("matterblueprints.host.tooltip.remote_physical"))
             .addInfo(tr("matterblueprints.host.tooltip.selector"))
+            .addInfo(tr("matterblueprints.host.final.upgrade"))
             .addInfo(tr("matterblueprints.host.tooltip.mechanics"))
             .addInfo(tr("matterblueprints.host.tooltip.batch"))
             .addInfo(tr("matterblueprints.host.tooltip.generator"))

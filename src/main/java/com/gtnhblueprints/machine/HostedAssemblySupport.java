@@ -6,6 +6,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
 
@@ -107,9 +108,17 @@ final class HostedAssemblySupport {
     }
 
     static ItemStack[] uniqueItems(Iterable<ItemStack> input) {
+        return uniqueItems(input, null);
+    }
+
+    static ItemStack[] uniqueItems(Iterable<ItemStack> input, Item virtualCircuit) {
         Set<ItemStack> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         List<ItemStack> result = new ArrayList<>();
-        for (ItemStack stack : input) if (stack != null && stack.stackSize > 0 && seen.add(stack)) result.add(stack);
+        for (ItemStack stack : input) {
+            if (stack == null) continue;
+            boolean virtual = stack.stackSize == 0 && virtualCircuit != null && stack.getItem() == virtualCircuit;
+            if ((stack.stackSize > 0 || virtual) && seen.add(stack)) result.add(stack);
+        }
         return result.toArray(new ItemStack[0]);
     }
 

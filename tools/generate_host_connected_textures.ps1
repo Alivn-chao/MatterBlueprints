@@ -1,5 +1,6 @@
 param(
-    [string]$TextureDirectory = (Join-Path $PSScriptRoot '..\src\main\resources\assets\matterblueprints\textures\blocks')
+    [string]$TextureDirectory = (Join-Path $PSScriptRoot '..\src\main\resources\assets\matterblueprints\textures\blocks'),
+    [switch]$PanelsOnly
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -14,9 +15,11 @@ function Write-ConnectedVariants {
         [string]$InputName,
         [string]$OutputPrefix,
         [int]$BorderWidth,
-        [ValidateSet('Solid', 'Extend')]
+        [ValidateSet('Panel', 'Extend')]
         [string]$JoinMode,
-        [bool]$UseTransparentJoin
+        [int]$DetailInsetX = 0,
+        [int]$DetailInsetY = 0,
+        [System.Drawing.Color]$PanelColor
     )
 
     $inputPath = Join-Path $TextureDirectory $InputName
@@ -44,7 +47,9 @@ function Write-ConnectedVariants {
                         $openLeft = $onLeft -and ($mask -band $edgeLeft) -eq 0
                         $openCount = @($openTop, $openRight, $openBottom, $openLeft).Where({ $_ }).Count
 
-                        if ($openCount -ge 2) {
+                        if ($JoinMode -eq 'Panel' -and $mask -eq 0) {
+                            $color = $source.GetPixel($x, $y)
+                        } elseif ($openCount -ge 2) {
                             # A true outside corner keeps both exposed frame edges.
                             $color = $source.GetPixel($x, $y)
                         } elseif ($openTop -or $openBottom) {
@@ -53,18 +58,15 @@ function Write-ConnectedVariants {
                         } elseif ($openLeft -or $openRight) {
                             # Continue a vertical outside frame through an internal tile seam.
                             $color = $source.GetPixel($x, $frameOffset + 8)
-                        } elseif ($onTop -or $onRight -or $onBottom -or $onLeft) {
-                            if ($JoinMode -eq 'Extend') {
-                                $sourceX = [Math]::Min(15 - $BorderWidth, [Math]::Max($BorderWidth, $x))
-                                $sourceFrameY = [Math]::Min(
-                                    15 - $BorderWidth,
-                                    [Math]::Max($BorderWidth, $frameY))
-                                $color = $source.GetPixel($sourceX, $frameOffset + $sourceFrameY)
-                            } elseif ($UseTransparentJoin) {
-                                $color = [System.Drawing.Color]::FromArgb(0, 0, 0, 0)
-                            } else {
-                                $color = $source.GetPixel(4, $frameOffset + 4)
-                            }
+                        } elseif ($JoinMode -eq 'Panel' -and (
+                            $x -lt $DetailInsetX -or $x -ge 16 - $DetailInsetX -or
+                            $frameY -lt $DetailInsetY -or $frameY -ge 16 - $DetailInsetY)) {
+                            # The recessed detail sits inside one shared panel, with no frame on internal edges.
+                            $color = $PanelColor
+                        } elseif ($JoinMode -eq 'Extend' -and ($onTop -or $onRight -or $onBottom -or $onLeft)) {
+                            $sourceX = [Math]::Min(15 - $BorderWidth, [Math]::Max($BorderWidth, $x))
+                            $sourceFrameY = [Math]::Min(15 - $BorderWidth, [Math]::Max($BorderWidth, $frameY))
+                            $color = $source.GetPixel($sourceX, $frameOffset + $sourceFrameY)
                         } else {
                             $color = $source.GetPixel($x, $y)
                         }
@@ -83,16 +85,26 @@ function Write-ConnectedVariants {
     }
 }
 
-Write-ConnectedVariants 'host_casing.png' 'host_casing_ctm' 2 'Solid' $false
-Write-ConnectedVariants 'host_casing_emissive.png' 'host_casing_ctm_emissive' 2 'Solid' $true
-Write-ConnectedVariants 'host_casing_light.png' 'host_casing_light_ctm' 3 'Extend' $false
-Write-ConnectedVariants 'host_casing_light_emissive.png' 'host_casing_light_ctm_emissive' 3 'Extend' $false
-Write-ConnectedVariants 'host_casing_light_vertical.png' 'host_casing_light_vertical_ctm' 3 'Extend' $false
-Write-ConnectedVariants 'host_casing_light_vertical_emissive.png' 'host_casing_light_vertical_ctm_emissive' 3 'Extend' $false
+Write-ConnectedVariants 'host_casing.png' 'host_casing_ctm' 2 'Panel' 4 5 ([System.Drawing.Color]::FromArgb(32, 38, 46))
+Write-ConnectedVariants 'host_cooling_fan.png' 'host_cooling_fan_ctm' 2 'Panel' 3 3 ([System.Drawing.Color]::FromArgb(23, 30, 40))
+Write-ConnectedVariants 'host_casing_emissive.png' 'host_casing_ctm_emissive' 2 'Panel' 4 5 ([System.Drawing.Color]::FromArgb(0, 0, 0, 0))
+Write-ConnectedVariants 'host_cooling_fan_emissive.png' 'host_cooling_fan_ctm_emissive' 2 'Panel' 3 3 ([System.Drawing.Color]::FromArgb(0, 0, 0, 0))
 
 for ($mask = 0; $mask -lt 16; $mask++) {
     Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_ctm_emissive_${mask}.png") `
         -Destination (Join-Path $TextureDirectory "host_casing_ctm_${mask}_emissive.png") -Force
+    Move-Item -LiteralPath (Join-Path $TextureDirectory "host_cooling_fan_ctm_emissive_${mask}.png") `
+        -Destination (Join-Path $TextureDirectory "host_cooling_fan_ctm_${mask}_emissive.png") -Force
+}
+
+if ($PanelsOnly) { return }
+
+Write-ConnectedVariants 'host_casing_light.png' 'host_casing_light_ctm' 3 'Extend'
+Write-ConnectedVariants 'host_casing_light_emissive.png' 'host_casing_light_ctm_emissive' 3 'Extend'
+Write-ConnectedVariants 'host_casing_light_vertical.png' 'host_casing_light_vertical_ctm' 3 'Extend'
+Write-ConnectedVariants 'host_casing_light_vertical_emissive.png' 'host_casing_light_vertical_ctm_emissive' 3 'Extend'
+
+for ($mask = 0; $mask -lt 16; $mask++) {
     Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_light_ctm_emissive_${mask}.png") `
         -Destination (Join-Path $TextureDirectory "host_casing_light_ctm_${mask}_emissive.png") -Force
     Move-Item -LiteralPath (Join-Path $TextureDirectory "host_casing_light_vertical_ctm_emissive_${mask}.png") `

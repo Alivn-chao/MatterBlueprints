@@ -32,6 +32,8 @@ public final class BlockHostedMachineCasing extends Block {
     @SideOnly(Side.CLIENT)
     private IIcon[] connectedCasingIcons;
     @SideOnly(Side.CLIENT)
+    private IIcon[] connectedFanIcons;
+    @SideOnly(Side.CLIENT)
     private IIcon[] connectedLightIcons;
     @SideOnly(Side.CLIENT)
     private IIcon[] connectedVerticalLightIcons;
@@ -58,8 +60,10 @@ public final class BlockHostedMachineCasing extends Block {
             register.registerIcon("matterblueprints:host_receiver_top"),
             register.registerIcon("matterblueprints:host_cooling_fan") };
         connectedCasingIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
+        connectedFanIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
         for (int mask = 0; mask < connectedCasingIcons.length; mask++) {
             connectedCasingIcons[mask] = register.registerIcon("matterblueprints:host_casing_ctm_" + mask);
+            connectedFanIcons[mask] = register.registerIcon("matterblueprints:host_cooling_fan_ctm_" + mask);
         }
         connectedLightIcons = new IIcon[CONNECTED_TEXTURE_COUNT];
         for (int mask = 0; mask < connectedLightIcons.length; mask++) {
@@ -88,6 +92,7 @@ public final class BlockHostedMachineCasing extends Block {
     public IIcon getIcon(IBlockAccess world, int x, int y, int z, int side) {
         int metadata = normalizeMetadata(world.getBlockMetadata(x, y, z));
         if (metadata == CASING) return connectedCasingIcons[getConnectionMask(world, x, y, z, side, CASING)];
+        if (metadata == COOLING_FAN) return connectedFanIcons[getConnectionMask(world, x, y, z, side, COOLING_FAN)];
         if (metadata == FLOW_LIGHT) {
             int mask = getConnectionMask(world, x, y, z, side, FLOW_LIGHT);
             return prefersVerticalLight(mask) ? connectedVerticalLightIcons[mask] : connectedLightIcons[mask];

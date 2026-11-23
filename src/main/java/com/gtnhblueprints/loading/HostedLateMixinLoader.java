@@ -29,7 +29,11 @@ public final class HostedLateMixinLoader implements ILateMixinLoader {
             mixins.add("MixinAEWirelessPathGrid");
             mixins.add("MixinAEWirelessPathCalculation");
         }
-        if (loadedMods.contains("gregtech")) mixins.add("MixinHostedMachineVisuals");
+        if (loadedMods.contains("gregtech")) {
+            mixins.add("MixinHostedMachineVisuals");
+            mixins.add("MixinLongStockItemGui");
+            mixins.add("MixinLongStockFluidGui");
+        }
         return mixins;
     }
 }

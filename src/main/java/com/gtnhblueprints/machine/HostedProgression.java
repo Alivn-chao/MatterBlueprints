@@ -64,6 +64,14 @@ final class HostedProgression {
         workUnits = saturatingAdd(workUnits, Math.max(0L, completed));
     }
 
+    void recordInstantRecipes(int duration, int eut, int parallels) {
+        productiveTicks = saturatingAdd(productiveTicks, duration);
+        energyThroughput = energyThroughput.add(BigInteger.valueOf((long) duration * eut)
+            .multiply(BigInteger.valueOf(parallels)));
+        recordCompletedRecipes(parallels);
+        hasPermanentPlasmaFuelDiscount();
+    }
+
     int getRuntimeLevel() {
         return level(productiveTicks, HostedMilestoneConfig.runtimeTicks);
     }
@@ -207,7 +215,7 @@ final class HostedProgression {
         return tier == 0 ? 100 : HostedMilestoneConfig.durationPercent[tier - 1];
     }
 
-    private int powerPercent() {
+    int powerPercent() {
         int tier = getPowerTier();
         return tier == 0 ? 100 : HostedMilestoneConfig.powerPercent[tier - 1];
     }
